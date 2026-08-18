@@ -78,12 +78,15 @@
     - id: settings
       name: '@deepseek-ai/dsh-settings-file'
 
-    # Credential sources: inherited environment over the managed
-    # `$DSH_HOME/.credentials.yaml`, with project and user `.env` fallbacks.
-    # Adapters resolve references per request; the Models page writes only the
-    # managed document, which is never materialized into the process environment.
+    # Credential sources: inherited environment over the project managed
+    # document, an optional user-global managed default, then project and user
+    # `.env` fallbacks. Adapters resolve references per request; managed values
+    # are never materialized into the process environment.
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
+      config:
+        globalPath: !!js process.env.DSH_GLOBAL_CREDENTIALS_PATH
+        defaultScope: !!js process.env.DSH_CREDENTIALS_DEFAULT_SCOPE ?? 'project'
 
     # The pi-ai multi-provider twin, mounted dormant: zero routes (and no extra
     # models in the picker) until a `llm-pi-ai:` settings section supplies provider

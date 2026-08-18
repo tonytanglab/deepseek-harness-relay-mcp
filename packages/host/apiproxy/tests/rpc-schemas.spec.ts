@@ -266,12 +266,9 @@ describe('sessions domain schemas', () => {
       sessionId: 's1', mode: 'queue', content: [],
     }).clientTimeZone).toBeUndefined()
     expect(() => sessionPromptRequestSchema.parse({ sessionId: 's1', mode: 'inject', content: [] })).toThrow()
-    expect(sessionPromptValueSchema.parse({ accepted: true }).accepted).toBe(true)
-    // The command slot appears only when the prompt dispatched a slash command.
-    const dispatched = sessionPromptValueSchema.parse({ accepted: true, command: { kind: 'success', text: 'Goal set' } })
-    expect(dispatched.command?.text).toBe('Goal set')
-    expect(sessionPromptValueSchema.parse({ accepted: true, command: { kind: 'success' } }).command).toEqual({ kind: 'success' })
-    expect(() => sessionPromptValueSchema.parse({ accepted: true, command: { kind: 'failure' } })).toThrow()
+    expect(sessionPromptValueSchema.parse({ accepted: true, messageId: 'message-1' }))
+      .toEqual({ accepted: true, messageId: 'message-1' })
+    expect(() => sessionPromptValueSchema.parse({ accepted: true })).toThrow()
     expect(sessionCancelRequestSchema.parse({ sessionId: 's1' }).sessionId).toBe('s1')
     expect(sessionUpdateQueueRequestSchema.parse({
       sessionId: 's1',

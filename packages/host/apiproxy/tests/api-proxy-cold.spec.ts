@@ -609,6 +609,9 @@ describe('subagent ownership fence', () => {
     }))
     expect(response.result.ok).toBe(true)
     expect(followup).toHaveBeenCalledOnce()
+    if (response.result.ok) {
+      expect(response.result.value.messageId).toBe((followup.mock.calls[0]?.[0] as { id: MessageId }).id)
+    }
   })
 
   it('canonicalizes a supplied browser zone on the exact prompt and rejects invalid names', async () => {

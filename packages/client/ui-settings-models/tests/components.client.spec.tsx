@@ -1303,6 +1303,31 @@ describe('ModelsSection', () => {
     })
   })
 
+  it('retains a shared global credential when removing its provider profile', async () => {
+    const scripted = scriptedFace()
+    scripted.face.credentials.describe.mockImplementation((payload: { refs: string[] }) => Promise.resolve(ok({
+      credentials: Object.fromEntries(payload.refs.map(ref => [ref, {
+        configured: ref === 'OPENAI_API_KEY',
+        ...ref === 'OPENAI_API_KEY'
+          ? {
+            source: 'global-file',
+            scope: 'global' as const,
+            writableScopes: ['global', 'project'] as const,
+            defaultScope: 'global' as const,
+          }
+          : {},
+        writable: true,
+      }])),
+    })))
+    const { unset, mutate } = await mountFace(scripted)
+    fireEvent.click(screen.getByRole('button', { name: openaiCopy(en.removeProvider) }))
+    const dialog = screen.getByRole('dialog', { name: openaiCopy(en.deleteTitle) })
+    expect(dialog.textContent).toContain(openaiCopy(en.deleteDescription))
+    fireEvent.click(within(dialog).getByRole('button', { name: openaiCopy(en.deleteConfirm) }))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledOnce() })
+    expect(unset).not.toHaveBeenCalled()
+  })
+
   it('does not remove provider settings when its managed credential removal is refused', async () => {
     const { face, controller, mutate } = await mountSection({
       unset: vi.fn(() => Promise.resolve(fail('credential is read-only', 'credential-rejected'))),

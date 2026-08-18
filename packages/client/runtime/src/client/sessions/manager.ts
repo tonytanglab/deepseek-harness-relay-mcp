@@ -162,7 +162,11 @@ export class SessionManager {
 
   /**
    * @param api - shared wire client.
+   * @param remote - typed command and subagent remotes.
    * @param restoredSelection - persisted real-Session selection candidate.
+   * @param restoredAddress - persisted subagent route paired with the selection.
+   * @param conversation - optional conversation extension registry.
+   * @param allowUnlistedSelection - retain a deep-linked id so its history error is visible instead of silently redirecting.
    */
   constructor(
     private readonly api: IApiClient,
@@ -170,6 +174,7 @@ export class SessionManager {
     restoredSelection?: SessionId,
     restoredAddress?: SubagentAddress,
     private readonly conversation?: ConversationRuntime,
+    private readonly allowUnlistedSelection = false,
   ) {
     this.selected = restoredSelection
     if (restoredAddress !== undefined) this.addresses.set(restoredAddress.childSessionId, restoredAddress)
@@ -1060,7 +1065,7 @@ export class SessionManager {
     if (!sameOrder) this.itemsCache = items
     const selected = this.selected
     const current = selected !== undefined
-      && (items.some(item => item.sessionId === selected) || this.addresses.has(selected))
+      && (this.allowUnlistedSelection || items.some(item => item.sessionId === selected) || this.addresses.has(selected))
       ? selected
       : undefined
     return {

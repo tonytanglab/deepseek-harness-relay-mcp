@@ -138,6 +138,14 @@ const homeAndGuide = pairedPages([
     section: { root: 'SDK', en: 'SDK' },
     order: 1,
   },
+  {
+    source: 'docs/user/guide/codex.md',
+    route: 'guide/codex.md',
+    label: { root: '在 Codex 中使用', en: 'Use with Codex' },
+    sidebar: { root: 'zh-guide', en: 'en-guide' },
+    section: { root: '入门', en: 'Guide' },
+    order: 3,
+  },
 ])
 
 const develop = pairedPages([

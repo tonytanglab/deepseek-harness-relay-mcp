@@ -313,14 +313,6 @@ export interface SessionsApi {
   Promise<RpcResponse<{ title: string; seq: number }>>
 
   /**
-   * Sends a message. content is core's ContentBlock[] verbatim; mode maps 1:1 — queue→send, steer→steer.
-   * A prompt whose content is exactly one text block starting with '/' is a slash command: the host
-   * executes it through the command registry (mode-agnostic) and it is never sent to the model. A
-   * successful command returns ok with the command slot (its success text, when the command produced
-   * one — carried for future rendering; the state change is the feedback). A usage/state error is an
-   * RPC error with code command-error; an unrecognized name is an RPC error with code unknown-command.
-   */
-  /**
    * Forks a new session from a completed-turn prefix of the source. `atSeq`
    * anchors the cut: the boundary is the first `turn/end` at or after it
    * (a message's fork button passes the message seq, so the fork includes
@@ -350,7 +342,7 @@ export interface SessionsApi {
     content: PromptContentPart[]
     clientTimeZone?: string
   }>):
-  Promise<RpcResponse<{ accepted: true; command?: { kind: 'success'; text?: string } }>>
+  Promise<RpcResponse<{ accepted: true; messageId: MessageId }>>
 
   /** Reads one durable image after proving that this session's log references its id. */
   attachment(request: RpcRequest<{ sessionId: SessionId; attachmentId: AttachmentIdType }>):

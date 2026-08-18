@@ -292,13 +292,10 @@ export const sessionPromptRequestSchema = z.object({
   clientTimeZone: z.string().optional(),
 }) as unknown as z.ZodType<RequestPayload<'session.prompt'>>
 
-/** session.prompt response value (the command slot appears only when the prompt dispatched a slash command). */
+/** session.prompt response value: durable identity of the admitted user message. */
 export const sessionPromptValueSchema = z.object({
   accepted: z.literal(true),
-  command: z.object({
-    kind: z.literal('success'),
-    text: z.string().optional(),
-  }).optional(),
+  messageId: messageIdSchema,
 }) satisfies z.ZodType<Wire<ResponseValue<'session.prompt'>>>
 
 /** Opaque attachment id after string-shape validation. */

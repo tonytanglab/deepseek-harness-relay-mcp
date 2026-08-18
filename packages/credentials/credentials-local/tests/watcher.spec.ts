@@ -112,6 +112,29 @@ describe('watcher pipeline', () => {
     })
   })
 
+  it('hot-publishes global edits while preserving a project override', async () => {
+    const dir = await tempDir()
+    const projectPath = join(dir, 'project.yaml')
+    const globalPath = join(dir, 'global.yaml')
+    await writeCredentials(globalPath, 'DSH_CRED_PIPE: global-old\n')
+    const ctx = await boot({ path: projectPath, globalPath, defaultScope: 'global', debounceMs: 5 })
+    const instances = await fakeInstances()
+    const globalWatcher = instances.find(instance => instance.path === globalPath)
+
+    await writeCredentials(globalPath, 'DSH_CRED_PIPE: global-new\n')
+    globalWatcher!.watcher.emit('all', 'change', globalPath)
+    await vi.waitFor(async () => {
+      expect(await ctx.credentials.resolve(KEY)).toEqual({ value: 'global-new', source: 'global-file' })
+    })
+
+    await writeCredentials(projectPath, 'DSH_CRED_PIPE: project\n')
+    const projectWatcher = instances.find(instance => instance.path === projectPath)
+    projectWatcher!.watcher.emit('all', 'add', projectPath)
+    await vi.waitFor(async () => {
+      expect(await ctx.credentials.resolve(KEY)).toEqual({ value: 'project', source: 'project-file' })
+    })
+  })
+
   it('keeps the last good snapshot when the file turns unreadable at runtime', async () => {
     const dir = await tempDir()
     const path = join(dir, '.credentials.yaml')

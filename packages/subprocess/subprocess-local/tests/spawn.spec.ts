@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   killGroup,
   OutputCollector,
+  requestTaskkillProcessTree,
   spawnSubprocess,
   taskkillProcessTree,
 } from '../src/spawn.ts'
@@ -731,6 +732,13 @@ describe('coverage seams', () => {
     // result and the function stays silent — the same containment Windows
     // relies on for an already-absent tree.
     expect(() => { taskkillProcessTree(2 ** 30) }).not.toThrow()
+  })
+
+  it('normal taskkill requests return without synchronously waiting for the command', async () => {
+    expect(() => { requestTaskkillProcessTree(-1) }).not.toThrow()
+    expect(() => { requestTaskkillProcessTree(0) }).not.toThrow()
+    expect(() => { requestTaskkillProcessTree(2 ** 30) }).not.toThrow()
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
   })
 
   it('a spawn-failed handle rejects done while waitForExit reports gone', async () => {

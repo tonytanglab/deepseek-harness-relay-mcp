@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Schema from '@deepseek-ai/schemastery'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
-import type { RpcResponse, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { CredentialView, RpcResponse, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import { ModelsSection, providerCopy } from '../src/client/ModelsSection.tsx'
 import type { ModelsSectionInjected } from '../src/client/ModelsSection.tsx'
 import { CustomProviderCard } from '../src/client/CustomProviderCard.tsx'
@@ -74,6 +74,8 @@ function scriptedFace(options: {
   discover?: ReturnType<typeof vi.fn>
   mutate?: ReturnType<typeof vi.fn>
   set?: ReturnType<typeof vi.fn>
+  unset?: ReturnType<typeof vi.fn>
+  credentialView?: CredentialView
 } = {}) {
   const providers = options.providers ?? {
     openai: { apiKeyEnv: 'OPENAI_API_KEY', baseURL: 'https://proxy.example/v1' },
@@ -82,6 +84,7 @@ function scriptedFace(options: {
   const discover = options.discover ?? vi.fn(() => Promise.resolve(ok({ models: [] })))
   const mutate = options.mutate ?? vi.fn(() => Promise.resolve(ok(namespace)))
   const set = options.set ?? vi.fn(() => Promise.resolve(ok({})))
+  const unset = options.unset ?? vi.fn(() => Promise.resolve(ok({})))
   const face = {
     llm: {
       providers: vi.fn(() => Promise.resolve(ok({
@@ -105,13 +108,14 @@ function scriptedFace(options: {
     },
     credentials: {
       describe: vi.fn((payload: { refs: string[] }) => Promise.resolve(ok({
-        credentials: Object.fromEntries(payload.refs.map(ref => [ref, { configured: false, writable: true }])),
+        credentials: Object.fromEntries(payload.refs.map(ref => [ref, options.credentialView
+          ?? { configured: false, writable: true }])),
       }))),
       set,
-      unset: vi.fn(),
+      unset,
     },
   }
-  return { face, discover, mutate, set, namespace }
+  return { face, discover, mutate, set, unset, namespace }
 }
 
 type WireFace = ConstructorParameters<typeof ModelsSettingsStore>[0]
@@ -1263,6 +1267,29 @@ describe('hand-declared providers', () => {
 })
 
 describe('API key field', () => {
+  it('shows Codex credential scopes and removes a project override after saving globally', async () => {
+    const { set, unset } = await mountSection({
+      credentialView: {
+        configured: true,
+        source: 'project-file',
+        scope: 'project',
+        writable: true,
+        writableScopes: ['global', 'project'],
+        defaultScope: 'global',
+      },
+    })
+    openEditor('openai')
+    const scope = await screen.findByLabelText<HTMLSelectElement>(en.credentialScope)
+    expect(scope.value).toBe('project')
+    fireEvent.change(scope, { target: { value: 'global' } })
+    fireEvent.change(screen.getByLabelText(en.keyInput), { target: { value: 'shared-key' } })
+    fireEvent.click(screen.getByText(en.apply))
+
+    await waitFor(() => { expect(unset).toHaveBeenCalled() })
+    expect(set).toHaveBeenCalledWith({ ref: 'OPENAI_API_KEY', value: 'shared-key', scope: 'global' })
+    expect(unset).toHaveBeenCalledWith({ ref: 'OPENAI_API_KEY', scope: 'project' })
+  })
+
   it('submits with a blank key field without writing a credential', async () => {
     const { mutate, set } = await mountSection()
     openEditor('openai')

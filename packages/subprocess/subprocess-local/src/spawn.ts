@@ -50,8 +50,10 @@ export function childEnv(extra?: Readonly<NodeJS.ProcessEnv>): NodeJS.ProcessEnv
 export interface SpawnInternals {
   /** Directory for spill files (defaults to the OS temp dir). */
   spillDir?: string
-  /** Windows tree-termination runner (defaults to `taskkill /PID <pid> /T /F`). */
+  /** Normal Windows tree-termination requester (defaults to non-blocking `taskkill /PID <pid> /T /F`). */
   taskkill?: (pid: number) => void
+  /** Synchronous Windows host-exit fallback (defaults to `taskkill /PID <pid> /T /F`). */
+  taskkillForHostExit?: (pid: number) => void
   /** Host platform override for signalling decisions. */
   platform?: NodeJS.Platform
   /** Linux process-group member probe (defaults to `/proc` inspection). */
@@ -282,6 +284,30 @@ export function taskkillProcessTree(pid: number): void {
 }
 
 /**
+ * Request Windows process-tree termination without blocking the Node event
+ * loop. Normal cancellation and timeout paths use this runner so a slow
+ * `taskkill` cannot freeze unrelated sessions or the Web control plane. The
+ * synchronous {@link taskkillProcessTree} remains reserved for Node's `exit`
+ * phase, where asynchronous work cannot complete.
+ * @param pid - root process id; non-positive is a no-op.
+ */
+export function requestTaskkillProcessTree(pid: number): void {
+  if (pid <= 0) return
+  try {
+    const request = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    request.on('error', () => {
+      // Missing taskkill and launch failures are contained like an absent tree.
+    })
+    request.unref()
+  } catch {
+    // Invalid launch state is contained like the synchronous fallback above.
+  }
+}
+
+/**
  * Signal a detached process tree with platform-correct semantics: POSIX
  * signals the negative process-group id and falls back to the direct child
  * when the group is gone; Windows terminates the tree via taskkill (any
@@ -329,7 +355,8 @@ export function spawnSubprocess(spec: SubprocessSpawnSpec, internals: SpawnInter
   }
   const spillDir = internals.spillDir ?? privateSpillDir()
   const platform = internals.platform ?? process.platform
-  const taskkill = internals.taskkill ?? taskkillProcessTree
+  const taskkill = internals.taskkill ?? requestTaskkillProcessTree
+  const taskkillForHostExit = internals.taskkillForHostExit ?? internals.taskkill ?? taskkillProcessTree
   const linuxGroupHasLiveMembers = internals.linuxProcessGroupHasLiveMembers ?? linuxProcessGroupHasLiveMembers
 
   if (spec.signal?.aborted) {
@@ -453,7 +480,8 @@ export function spawnSubprocess(spec: SubprocessSpawnSpec, internals: SpawnInter
   }
 
   const terminateForHostExit = (): void => {
-    kill('SIGKILL')
+    if (!treeAlive()) return
+    signalTree(platform, pid, 'SIGKILL', child, taskkillForHostExit)
   }
 
   // The caller owns timeout classification; this layer only reacts to abort.

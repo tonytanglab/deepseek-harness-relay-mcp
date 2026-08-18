@@ -2,18 +2,19 @@
 
 English | [中文](README.zh.md)
 
-File-backed [credentials](../credentials/README.md) provider: four layers, one honest precedence.
+File-backed [credentials](../credentials/README.md) provider. A normal Harness home keeps the original four-layer behavior; a supervised Codex service adds a user-global managed default below its project override.
 
 | Layer | Source id | Writable | Wins |
 |---|---|---|---|
 | Inherited process environment | `env` | no | always |
-| `$DSH_HOME/.credentials.yaml` document | `file` | yes (`set`/`unset`) | over both `.env` layers |
+| Project credentials document | `project-file` (`file` without `globalPath`) | yes (`set`/`unset`) | over the global document and both `.env` layers |
+| Optional user-global document | `global-file` | yes (`set`/`unset`) | over both `.env` layers |
 | `<invocation cwd>/.env` | `project-env` | not here | over the user `.env` |
 | `$DSH_HOME/.env` | `user-env` | not here | otherwise |
 
 The launching environment wins because a per-run override (`DEEPSEEK_API_KEY=… dsh`, a CI secret, a container `-e`) is operator intent for this run — and because it cannot be edited from inside, it must be *visibly* read-only: `describe()` reports `source: 'env', writable: false`, and `set`/`unset` reject instead of writing a change the reader would never see.
 
-Everything below it loses to the managed store, so a key written by the Models page takes effect immediately even when an older key sits in a `.env`. Those two layers still resolve when nothing is stored, and `describe()` names them `project-env` or `user-env` with `writable: true` — storing a key replaces them as the effective source.
+Everything below the managed documents loses to them, so a key written by the Models page takes effect immediately even when an older key sits in a `.env`. A project document overrides the global default for the same reference. When `globalPath` is absent, the project document retains source id `file` and the old value-free `describe()` fields; when present, `describe()` also reports the writable scopes, default write scope, and effective managed scope.
 
 Under the product CLI, resolution reads the launcher's frozen [environment snapshot](../../util/launch-environment/README.md) rather than `process.env`: only the snapshot can say whether a value came from the launching shell or from a file. A composition the product CLI did not boot has the inherited environment as its only layer, which keeps embedders on the semantics they already had.
 
@@ -23,6 +24,8 @@ Under the product CLI, resolution reads the launcher's frozen [environment snaps
 |---|---|---|
 | `path` | `<harness home>/.credentials.yaml` | Credentials document location. |
 | `dshHome` | `$DSH_HOME` or `~/.dsh` | Harness home used when `path` is omitted. |
+| `globalPath` | unset | Optional user-global credentials document below the project override. |
+| `defaultScope` | `project` | Target for an unscoped write; `global` requires `globalPath`. |
 | `watch` | `true` | Hot-publish external edits. |
 | `debounceMs` | `100` | Watcher write-settle window. |
 
@@ -37,7 +40,7 @@ OPENAI_API_KEY: sk-…
 
 The document holds credentials only, so every deviation is a rejection rather than a skipped entry — a silently ignored key would read as "the secret I stored has no effect". A non-mapping root, a key that is not a POSIX identifier, a non-string value, an empty string, a duplicate key, and malformed YAML all fail: loud at boot, and warn-and-keep-the-last-good-snapshot on a live reload. There is no `version` field and no wrapper level; the format is the mapping.
 
-Writes patch the parsed document rather than rebuilding it, so comments and the formatting of every untouched entry survive. A comment directly above an entry is that entry's annotation and is removed with it. Every write first re-reads the document under the cross-process writer lock of [`dsh-atomic-write`](../../util/atomic-write/README.md) and publishes anything it had not observed, then commits atomically with mode `0600` under an owner-only (`0700`) directory — so a concurrent writer or an external edit inside the watcher's debounce window is folded in rather than overwritten. An on-disk document that no longer parses fails the write instead of overwriting content the provider could not understand.
+Writes patch the selected parsed document rather than rebuilding it, so comments and the formatting of every untouched entry survive. A comment directly above an entry is that entry's annotation and is removed with it. Every write first re-reads that document under the cross-process writer lock of [`dsh-atomic-write`](../../util/atomic-write/README.md) and publishes anything it had not observed, then commits atomically with mode `0600` under an owner-only (`0700`) directory — so a concurrent writer or an external edit inside the watcher's debounce window is folded in rather than overwritten. An on-disk document that no longer parses fails the write instead of overwriting content the provider could not understand.
 
 Any string value round-trips, multi-line values included, so no entry is unwritable for want of a quoting style. An empty stored value is absent, per the seam rule — which is why an empty string in the document is rejected outright: `unset` removes a key, it does not blank it.
 
@@ -47,7 +50,7 @@ The provider creates the directory `0700` and creates or atomically replaces the
 
 ## Hot reload
 
-External edits publish `credentials/updated` per changed reference after the snapshot is replaced **wholesale** — an entry deleted on disk never lingers in memory. Before Chokidar opens the target, the provider realpaths its deepest existing ancestor and restores any missing suffix; file access and diagnostics retain the configured path, while Windows cannot mix an 8.3 alias with long-form libuv events. The provider's own writes are recognized by content and publish exactly their one commit event. An unreadable or invalid document at runtime keeps the last good snapshot and warns; an absent file is an empty store; an unreadable or invalid file at boot fails loud.
+External edits to either managed document publish `credentials/updated` per changed reference after that snapshot is replaced **wholesale** — an entry deleted on disk never lingers in memory. Before Chokidar opens each target, the provider realpaths its deepest existing ancestor and restores any missing suffix; file access and diagnostics retain the configured path, while Windows cannot mix an 8.3 alias with long-form libuv events. The provider's own writes are recognized by content and publish exactly their one commit event. An unreadable or invalid document at runtime keeps its last good snapshot and warns; an absent file is an empty store; an unreadable or invalid file at boot fails loud.
 
 ## Security boundary
 

@@ -18,7 +18,7 @@ import type { GenerateOptions, LlmModelInfo, LlmProviderInfo, StreamChunk } from
 import { SettingsProvider, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { CredentialProvider } from '@deepseek-ai/dsh-credentials'
-import type { CredentialInfo, CredentialRef, ResolvedCredential } from '@deepseek-ai/dsh-credentials'
+import type { CredentialInfo, CredentialRef, CredentialScope, ResolvedCredential } from '@deepseek-ai/dsh-credentials'
 import type { HostFrame } from '../src/api/index.ts'
 import type { RpcRequest, RpcResponse } from '../src/api/rpc.ts'
 import { RpcId } from '../src/api/rpc.ts'
@@ -90,6 +90,7 @@ class MemorySettings extends SettingsProvider {
 /** In-memory credential provider with an env-shadow double for the rejection path. */
 class MemoryCredentials extends CredentialProvider {
   private readonly values = new Map<string, string>()
+  readonly writes: Array<{ op: 'set' | 'unset'; ref: CredentialRef; scope?: CredentialScope }> = []
 
   constructor(ctx: ConstructorParameters<typeof CredentialProvider>[0], options?: { shadowed?: string[] }) {
     super(ctx)
@@ -110,20 +111,22 @@ class MemoryCredentials extends CredentialProvider {
     return Promise.resolve({ configured, ...configured ? { source: 'file' } : {}, writable: true })
   }
 
-  set(ref: CredentialRef, value: string): Promise<void> {
+  set(ref: CredentialRef, value: string, scope?: CredentialScope): Promise<void> {
     if (this.shadowed.has(ref)) {
       return Promise.reject(new Error(`credentials: ${ref} is shadowed by the read-only environment`))
     }
     this.values.set(ref, value)
+    this.writes.push({ op: 'set', ref, ...scope === undefined ? {} : { scope } })
     this.ctx.emit('credentials/updated', ref)
     return Promise.resolve()
   }
 
-  unset(ref: CredentialRef): Promise<void> {
+  unset(ref: CredentialRef, scope?: CredentialScope): Promise<void> {
     if (this.shadowed.has(ref)) {
       return Promise.reject(new Error(`credentials: ${ref} is shadowed by the read-only environment`))
     }
     this.values.delete(ref)
+    this.writes.push({ op: 'unset', ref, ...scope === undefined ? {} : { scope } })
     this.ctx.emit('credentials/updated', ref)
     return Promise.resolve()
   }
@@ -602,6 +605,17 @@ describe('credentials domain', () => {
     expect(frames).toEqual([
       { type: 'host/remote-event', event: 'credentials/updated', args: ['OPENAI_API_KEY'] },
       { type: 'host/remote-event', event: 'credentials/updated', args: ['OPENAI_API_KEY'] },
+    ])
+  })
+
+  it('forwards explicit global and project write scopes without exposing values', async () => {
+    const ctx = await harness()
+    const api = createApiProxy(ctx, DEFAULTS)
+    expectOk(await api.credentials.set(request({ ref: 'OPENAI_API_KEY', value: 'shared', scope: 'global' })))
+    expectOk(await api.credentials.unset(request({ ref: 'OPENAI_API_KEY', scope: 'project' })))
+    expect((ctx.credentials as MemoryCredentials).writes).toEqual([
+      { op: 'set', ref: 'OPENAI_API_KEY', scope: 'global' },
+      { op: 'unset', ref: 'OPENAI_API_KEY', scope: 'project' },
     ])
   })
 

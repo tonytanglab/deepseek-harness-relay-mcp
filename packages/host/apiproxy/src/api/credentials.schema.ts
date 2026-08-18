@@ -10,6 +10,8 @@ import type { RequestPayload, ResponseValue } from './rpc-map.ts'
 import type { Wire } from './rpc.schema.ts'
 import type { CredentialView } from './credentials.ts'
 
+const credentialScopeSchema = z.union([z.literal('global'), z.literal('project')])
+
 /** POSIX-portable environment-variable name (the seam's `credentialRef` pattern). */
 export const credentialRefNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
 
@@ -18,6 +20,9 @@ export const credentialViewSchema = z.object({
   configured: z.boolean(),
   source: z.string().optional(),
   writable: z.boolean(),
+  writableScopes: z.array(credentialScopeSchema).optional(),
+  defaultScope: credentialScopeSchema.optional(),
+  scope: credentialScopeSchema.optional(),
 }) satisfies z.ZodType<Wire<CredentialView>>
 
 /** credentials.describe request payload. */
@@ -34,6 +39,7 @@ export const credentialsDescribeValueSchema = z.object({
 export const credentialsSetRequestSchema = z.object({
   ref: credentialRefNameSchema,
   value: z.string().min(1),
+  scope: credentialScopeSchema.optional(),
 }) satisfies z.ZodType<Wire<RequestPayload<'credentials.set'>>>
 
 /** credentials.set response value. */
@@ -42,6 +48,7 @@ export const credentialsSetValueSchema = z.object({}) satisfies z.ZodType<Wire<R
 /** credentials.unset request payload. */
 export const credentialsUnsetRequestSchema = z.object({
   ref: credentialRefNameSchema,
+  scope: credentialScopeSchema.optional(),
 }) satisfies z.ZodType<Wire<RequestPayload<'credentials.unset'>>>
 
 /** credentials.unset response value. */

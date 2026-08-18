@@ -57,9 +57,63 @@ describe('resolveSpec', () => {
     const spec = resolveSpec({ path: '/etc/dsh/creds.yaml', dshHome: '/ignored', watch: false, debounceMs: 5 })
     expect(spec).toEqual({ filename: resolve('/etc/dsh/creds.yaml'), watch: false, debounceMs: 5 })
   })
+
+  it('resolves a separate global document and rejects invalid global defaults', () => {
+    expect(resolveSpec({
+      path: '/project/credentials.yaml',
+      globalPath: '/user/credentials.yaml',
+      defaultScope: 'global',
+      watch: false,
+    })).toEqual({
+      filename: resolve('/project/credentials.yaml'),
+      globalFilename: resolve('/user/credentials.yaml'),
+      defaultScope: 'global',
+      watch: false,
+      debounceMs: 100,
+    })
+    expect(() => resolveSpec({ defaultScope: 'global' })).toThrow(/requires globalPath/)
+    expect(() => resolveSpec({ path: '/same', globalPath: '/same' })).toThrow(/must differ/)
+  })
 })
 
 describe('layering and reads', () => {
+  it('uses a project override over the global default and writes either scope explicitly', async () => {
+    const dir = await tempDir()
+    const projectPath = join(dir, 'project', '.credentials.yaml')
+    const globalPath = join(dir, 'global', '.credentials.yaml')
+    await Promise.all([mkdir(join(dir, 'project')), mkdir(join(dir, 'global'))])
+    await writeCredentials(globalPath, 'DSH_CRED_TEST: global-old\n')
+    await writeCredentials(projectPath, 'DSH_CRED_TEST: project-old\n')
+    const ctx = await boot({ path: projectPath, globalPath, defaultScope: 'global', watch: false })
+
+    expect(await ctx.credentials.resolve(KEY)).toEqual({ value: 'project-old', source: 'project-file' })
+    expect(await ctx.credentials.describe(KEY)).toEqual({
+      configured: true,
+      source: 'project-file',
+      scope: 'project',
+      writable: true,
+      writableScopes: ['global', 'project'],
+      defaultScope: 'global',
+    })
+
+    await ctx.credentials.set(KEY, 'global-new', 'global')
+    expect(await ctx.credentials.resolve(KEY)).toEqual({ value: 'project-old', source: 'project-file' })
+    expect(await readFile(globalPath, 'utf8')).toContain('DSH_CRED_TEST: global-new')
+    await ctx.credentials.unset(KEY, 'project')
+    expect(await ctx.credentials.resolve(KEY)).toEqual({ value: 'global-new', source: 'global-file' })
+    expect(await ctx.credentials.describe(KEY)).toMatchObject({ source: 'global-file', scope: 'global' })
+  })
+
+  it('uses the configured global default for unscoped writes', async () => {
+    const dir = await tempDir()
+    const projectPath = join(dir, 'project.yaml')
+    const globalPath = join(dir, 'global.yaml')
+    const ctx = await boot({ path: projectPath, globalPath, defaultScope: 'global', watch: false })
+    await ctx.credentials.set(KEY, 'shared')
+    expect(await readFile(globalPath, 'utf8')).toContain('DSH_CRED_TEST: shared')
+    await expect(readFile(projectPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('treats an absent file as an empty writable store', async () => {
     const dir = await tempDir()
     const ctx = await boot({ path: join(dir, '.credentials.yaml'), watch: false })

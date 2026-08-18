@@ -136,6 +136,7 @@ function targetOf(row: ProviderRow): EditorTarget {
   const credentialRef = row.apiKeyEnv === managedRef
     && row.credential?.configured === true
     && row.credential.writable
+    && row.credential.scope !== 'global'
     ? managedRef
     : undefined
   return {

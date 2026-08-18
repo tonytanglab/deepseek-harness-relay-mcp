@@ -2429,10 +2429,11 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           attachments.set(String(attachment.attachmentId), { attachment, data: block.data })
           return { type: 'image', attachment }
         })
+        const message = userMessage(durable)
         if (mode === 'steer' && replays.has(id)) {
           // Steering: the durable user/message lands inside the current turn; the replay continues.
-          append(id, { type: 'user/message', surfaceOp: 'append', data: userMessage(durable) })
-          return ok(request, { accepted: true as const })
+          append(id, { type: 'user/message', surfaceOp: 'append', data: message })
+          return ok(request, { accepted: true as const, messageId: message.id })
         }
         const turn = nextTurn.get(id) ?? 0
         nextTurn.set(id, turn + 1)
@@ -2444,7 +2445,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         if (plan.wanted !== null && plan.wanted !== plan.active) {
           append(id, { type: 'plan/mode', data: { active: plan.wanted } })
         }
-        append(id, { type: 'user/message', surfaceOp: 'append', data: userMessage(durable) })
+        append(id, { type: 'user/message', surfaceOp: 'append', data: message })
         // Capacity parallel of the host token-meter's request/context record:
         // log-only, appended inside the open turn, and deduplicated against the
         // route already recorded (the fixture never varies contextWindow).
@@ -2468,7 +2469,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
               })()
               : `回声：${userText}。这是 fixture 的流式回复，用于验证打字机增长与定稿切换。`,
         )
-        return ok(request, { accepted: true as const })
+        return ok(request, { accepted: true as const, messageId: message.id })
       },
       attachment: (request) => {
         const stored = attachments.get(String(request.payload.attachmentId))

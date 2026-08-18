@@ -422,6 +422,13 @@ function webSnapshotGate(needs: string[]): Gate {
 function ciWindowsBlockingGates(): Gate[] {
   return [
     pnpmScript('windows-build', 'build', { label: 'build' }),
+    pnpmExec('windows-codex-profile', [
+      'vitest',
+      'run',
+      '--config',
+      'vitest.e2e.config.ts',
+      'apps/cli/tests/codex-profile.e2e.ts',
+    ], { label: 'Codex profile smoke', needs: ['windows-build'] }),
     pnpmScript('windows-site', 'docs:build', { label: 'production site' }),
   ]
 }
@@ -623,6 +630,7 @@ function builtBinSmokeGate(needs: string[] = ['build']): Gate {
     'vitest.e2e.config.ts',
     'examples/headless-agent/tests/keyless-smoke.e2e.ts',
     'apps/cli/tests/built-bin.e2e.ts',
+    'apps/cli/tests/codex-profile.e2e.ts',
     'packages/examples/acp-demo/tests/built-bin.e2e.ts',
     'packages/host/directory-picker-native/tests/built-worker.e2e.ts',
     'packages/sdk/server/tests/built-scope-carrier.e2e.ts',

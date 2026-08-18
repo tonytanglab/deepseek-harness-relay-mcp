@@ -1,10 +1,11 @@
 /**
- * File-backed credentials provider over `$DSH_HOME/.credentials.yaml`, layered
+ * File-backed credentials provider over project and optional global documents, layered
  * against the environment by how much each layer is trusted:
  *
  * ```text
  * inherited process environment      (read-only, wins)
- * > $DSH_HOME/.credentials.yaml      (provider-managed, writable)
+ * > project .credentials.yaml        (provider-managed override, writable)
+ * > optional global document         (provider-managed default, writable)
  * > <invocation cwd>/.env            (read-only fallback)
  * > $DSH_HOME/.env                   (read-only fallback)
  * ```
@@ -12,21 +13,21 @@
  * The inherited environment wins because `DEEPSEEK_API_KEY=… dsh`, a CI
  * secret, or a container `-e` is this run's explicit intent; it cannot be
  * edited from inside, so it must be *visibly* read-only rather than silently
- * shadow writes. Everything below it loses to the managed store, so a key the
+ * shadow writes. Everything below it loses to the managed documents, so a key the
  * Models page writes takes effect immediately even when an older key sits in
  * the user's `.env`.
  *
  * The invoking project may supply a key, because the product trusts the
- * project it is launched in. It ranks below the managed store, so a key stored
+ * project it is launched in. It ranks below the managed documents, so a key stored
  * through the Models page is never displaced by one a checkout happens to carry.
  *
- * The file is the provider-managed writable source: every write re-reads the
- * document under a cross-process writer lock before patching only its own key
+ * Each file is a provider-managed writable source: every write re-reads the
+ * selected document under a cross-process writer lock before patching only its own key
  * — comments and the formatting of every untouched entry survive — external
  * edits hot-publish through the seam, and each reload replaces the snapshot
  * wholesale so a deleted entry never lingers in memory.
  *
- * The document holds nothing but credentials, which is why it is a strict
+ * Each document holds nothing but credentials, which is why it is a strict
  * `CredentialRef`-to-string mapping rather than a dotenv file: a store the
  * Harness owns and never materializes into the environment cannot also serve
  * as the user's environment layer; a store that doubled as the environment
@@ -45,7 +46,9 @@ import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { canonicalizeWatchPath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { CredentialProvider, credentialRef } from '@deepseek-ai/dsh-credentials'
-import type { CredentialInfo, CredentialRef, ResolvedCredential } from '@deepseek-ai/dsh-credentials'
+import type {
+  CredentialInfo, CredentialRef, CredentialScope, ResolvedCredential,
+} from '@deepseek-ai/dsh-credentials'
 import type { LaunchEnvironmentEntry } from '@deepseek-ai/dsh-launch-environment'
 
 /** Basename of the credentials document inside the harness home. */
@@ -53,10 +56,14 @@ export const CREDENTIALS_FILENAME = '.credentials.yaml'
 
 /** Plugin config: file location and hot-reload behavior. */
 export interface Config {
-  /** Credentials document path; defaults to `.credentials.yaml` under the harness home. */
+  /** Project credentials document path; defaults to `.credentials.yaml` under the harness home. */
   path?: string
   /** Harness home used when `path` is omitted; defaults to `$DSH_HOME` or `~/.dsh`. */
   dshHome?: string
+  /** Optional user-global credentials document below the project override. */
+  globalPath?: string
+  /** Scope used by writes that omit a target; `global` requires `globalPath`. */
+  defaultScope?: CredentialScope
   /** Watch the document and hot-publish external edits; defaults to true. */
   watch?: boolean
   /** Watcher write-settle window in milliseconds; defaults to 100. */
@@ -66,6 +73,8 @@ export interface Config {
 /** Fully resolved provider parameters; defaulting happens here, never inline. */
 interface ResolvedSpec {
   filename: string
+  globalFilename?: string
+  defaultScope?: CredentialScope
   watch: boolean
   debounceMs: number
 }
@@ -77,8 +86,19 @@ interface ResolvedSpec {
  * @returns the resolved file location and watch behavior.
  */
 export function resolveSpec(config: Config): ResolvedSpec {
+  const filename = resolve(config.path ?? join(resolveDshHome(config.dshHome), CREDENTIALS_FILENAME))
+  const globalFilename = config.globalPath === undefined ? undefined : resolve(config.globalPath)
+  const defaultScope = config.defaultScope ?? 'project'
+  if (defaultScope === 'global' && globalFilename === undefined) {
+    throw new Error('credentials-local: defaultScope "global" requires globalPath')
+  }
+  if (globalFilename === filename) {
+    throw new Error('credentials-local: globalPath must differ from the project credentials path')
+  }
   return {
-    filename: resolve(config.path ?? join(resolveDshHome(config.dshHome), CREDENTIALS_FILENAME)),
+    filename,
+    ...globalFilename === undefined ? {} : { globalFilename },
+    ...globalFilename === undefined ? {} : { defaultScope },
     watch: config.watch ?? true,
     debounceMs: config.debounceMs ?? 100,
   }
@@ -203,7 +223,7 @@ function renderDocument(text: string | undefined, ref: CredentialRef, value: str
   return document.toString()
 }
 
-/** File-backed credentials provider (`$DSH_HOME/.credentials.yaml`). */
+/** File-backed credentials provider with a project document and optional global default. */
 export class LocalCredentialProvider extends CredentialProvider {
   /* jscpd:ignore-start -- deliberate config-surface and lifecycle symmetry with
      settings-file (prefer symmetry for parallel values); extracting the shared
@@ -211,6 +231,8 @@ export class LocalCredentialProvider extends CredentialProvider {
   static Config: z<Config> = z.object({
     path: z.string(),
     dshHome: z.string(),
+    globalPath: z.string(),
+    defaultScope: z.union(['global', 'project'] as const).default('project'),
     watch: z.boolean().default(true),
     debounceMs: z.number().min(0).default(100),
   })
@@ -221,9 +243,15 @@ export class LocalCredentialProvider extends CredentialProvider {
    * file is absent. Watcher events whose content equals this cache are no-ops,
    * which is also the self-write suppression.
    */
-  private text: string | undefined
-  /** Parsed document snapshot; replaced wholesale on every reload. */
-  private values = new Map<string, string>()
+  private readonly text: Record<CredentialScope, string | undefined> = {
+    global: undefined,
+    project: undefined,
+  }
+  /** Parsed document snapshots; each is replaced wholesale on reload. */
+  private readonly values: Record<CredentialScope, Map<string, string>> = {
+    global: new Map<string, string>(),
+    project: new Map<string, string>(),
+  }
   /**
    * Single exclusive operation chain: watcher reloads and line edits run one
    * at a time in queue order (settled tail), so an edit can never render from
@@ -262,6 +290,18 @@ export class LocalCredentialProvider extends CredentialProvider {
     return entry !== undefined && entry.value.length > 0 ? entry : undefined
   }
 
+  /** Configured managed-document scopes in resolution order. */
+  private scopes(): CredentialScope[] {
+    return this.spec.globalFilename === undefined ? ['project'] : ['project', 'global']
+  }
+
+  /** Absolute managed-document path for one available scope. */
+  private filename(scope: CredentialScope): string {
+    if (scope === 'project') return this.spec.filename
+    if (this.spec.globalFilename !== undefined) return this.spec.globalFilename
+    throw new Error('credentials-local: global credential scope is not configured')
+  }
+
   async* [Service.init](): AsyncGenerator<() => Promise<void> | void, void, void> {
     yield async () => {
       // Drain: refuse new operations, then settle the queued ones so disposal
@@ -269,38 +309,42 @@ export class LocalCredentialProvider extends CredentialProvider {
       this.closed = true
       await this.operations
     }
-    await this.loadInitial()
+    for (const scope of this.scopes()) await this.loadInitial(scope)
     if (!this.spec.watch) return
     /* jscpd:ignore-start -- same watcher discipline as settings-file by design:
        the serialized-refresh and quiesce-on-dispose shape is the reviewed
        lifecycle contract, not accidental repetition. */
-    const watcher = chokidarWatch(await canonicalizeWatchPath(this.spec.filename), {
-      ignoreInitial: true,
-      awaitWriteFinish: {
-        stabilityThreshold: this.spec.debounceMs,
-        pollInterval: Math.max(1, Math.min(this.spec.debounceMs, 10)),
-      },
-    })
-    watcher.on('all', () => {
-      if (this.closed) return
-      this.queueRefresh()
-    })
-    watcher.on('ready', () => {
-      // The initial load raced the watcher's own setup: a change written
-      // between that read and the watcher becoming active never fires an
-      // event. One reconcile at ready closes the gap.
-      if (this.closed) return
-      this.queueRefresh()
-    })
-    watcher.on('error', (error) => {
-      this.ctx.logger.warn('credentials-local: watcher error on %s', this.spec.filename)
-      this.ctx.logger.warn(error)
-    })
+    const watchers = await Promise.all(this.scopes().map(async (scope) => {
+      const filename = this.filename(scope)
+      const watcher = chokidarWatch(await canonicalizeWatchPath(filename), {
+        ignoreInitial: true,
+        awaitWriteFinish: {
+          stabilityThreshold: this.spec.debounceMs,
+          pollInterval: Math.max(1, Math.min(this.spec.debounceMs, 10)),
+        },
+      })
+      watcher.on('all', () => {
+        if (this.closed) return
+        this.queueRefresh(scope)
+      })
+      watcher.on('ready', () => {
+        // The initial load raced the watcher's own setup: a change written
+        // between that read and the watcher becoming active never fires an
+        // event. One reconcile at ready closes the gap.
+        if (this.closed) return
+        this.queueRefresh(scope)
+      })
+      watcher.on('error', (error) => {
+        this.ctx.logger.warn('credentials-local: watcher error on %s', filename)
+        this.ctx.logger.warn(error)
+      })
+      return watcher
+    }))
     yield async () => {
       // Quiesce: stop accepting events, close the watcher, then wait out any
       // queued or in-flight operation so nothing publishes after disposal.
       this.closed = true
-      await watcher.close()
+      await Promise.all(watchers.map(watcher => watcher.close()))
       await this.operations
     }
     /* jscpd:ignore-end */
@@ -309,8 +353,12 @@ export class LocalCredentialProvider extends CredentialProvider {
   override resolve(ref: CredentialRef): Promise<ResolvedCredential | undefined> {
     const inherited = this.inherited(ref)
     if (inherited !== undefined) return Promise.resolve({ value: inherited, source: 'env' })
-    const stored = this.values.get(ref)
-    if (stored !== undefined) return Promise.resolve({ value: stored, source: 'file' })
+    const project = this.values.project.get(ref)
+    if (project !== undefined) {
+      return Promise.resolve({ value: project, source: this.spec.globalFilename === undefined ? 'file' : 'project-file' })
+    }
+    const global = this.values.global.get(ref)
+    if (global !== undefined) return Promise.resolve({ value: global, source: 'global-file' })
     const fallback = this.dotenvFallback(ref)
     if (fallback !== undefined) return Promise.resolve({ value: fallback.value, source: fallback.source })
     return Promise.resolve(undefined)
@@ -323,22 +371,53 @@ export class LocalCredentialProvider extends CredentialProvider {
     if (this.inherited(ref) !== undefined) {
       return Promise.resolve({ configured: true, source: 'env', writable: false })
     }
-    const stored = this.values.get(ref)
-    if (stored !== undefined) return Promise.resolve({ configured: true, source: 'file', writable: true })
+    if (this.spec.globalFilename === undefined) {
+      const stored = this.values.project.get(ref)
+      if (stored !== undefined) return Promise.resolve({ configured: true, source: 'file', writable: true })
+      const fallback = this.dotenvFallback(ref)
+      if (fallback !== undefined) return Promise.resolve({ configured: true, source: fallback.source, writable: true })
+      return Promise.resolve({ configured: false, writable: true })
+    }
+    const writableScopes: CredentialScope[] = ['global', 'project']
+    const scoped = {
+      writable: true,
+      writableScopes,
+      defaultScope: this.spec.defaultScope ?? 'project',
+    } as const
+    const project = this.values.project.get(ref)
+    if (project !== undefined) {
+      return Promise.resolve({
+        configured: true,
+        source: 'project-file',
+        scope: 'project',
+        ...scoped,
+      })
+    }
+    const global = this.values.global.get(ref)
+    if (global !== undefined) {
+      return Promise.resolve({ configured: true, source: 'global-file', scope: 'global', ...scoped })
+    }
     const fallback = this.dotenvFallback(ref)
-    if (fallback !== undefined) return Promise.resolve({ configured: true, source: fallback.source, writable: true })
-    return Promise.resolve({ configured: false, writable: true })
+    if (fallback !== undefined) return Promise.resolve({ configured: true, source: fallback.source, ...scoped })
+    return Promise.resolve({ configured: false, ...scoped })
   }
 
-  override async set(ref: CredentialRef, value: string): Promise<void> {
+  override async set(ref: CredentialRef, value: string, scope?: CredentialScope): Promise<void> {
     if (value.length === 0) {
       throw new Error(`credentials-local: an empty value cannot be stored for "${ref}"; use unset`)
     }
-    await this.write(ref, value)
+    await this.write(ref, value, this.writeScope(scope))
   }
 
-  override async unset(ref: CredentialRef): Promise<void> {
-    await this.write(ref, undefined)
+  override async unset(ref: CredentialRef, scope?: CredentialScope): Promise<void> {
+    await this.write(ref, undefined, this.writeScope(scope))
+  }
+
+  /** Resolve an explicit or configured write scope and reject unavailable storage. */
+  private writeScope(scope: CredentialScope | undefined): CredentialScope {
+    const resolved = scope ?? this.spec.defaultScope ?? 'project'
+    this.filename(resolved)
+    return resolved
   }
 
   /* jscpd:ignore-start -- the operation-chain and reload lifecycle is the same
@@ -354,20 +433,21 @@ export class LocalCredentialProvider extends CredentialProvider {
   }
 
   /** Queue a reload; only an invariant violation escaping the fan-out can reject it. */
-  private queueRefresh(): void {
-    void this.enqueue(() => this.refresh()).catch((error: unknown) => {
+  private queueRefresh(scope: CredentialScope): void {
+    void this.enqueue(() => this.refresh(scope)).catch((error: unknown) => {
       // Only an invariant violation escaping the update fan-out can reject a
       // refresh; keep the operation queue alive and surface it as an error so
       // one poisoned commit cannot silently end hot reloading forever.
-      this.ctx.logger.error('credentials-local: reload commit failed at %s', this.spec.filename)
+      this.ctx.logger.error('credentials-local: reload commit failed at %s', this.filename(scope))
       this.ctx.logger.error(error)
     })
   }
   /* jscpd:ignore-end */
 
   /** Queue one line edit; entry checks reject early, the queue re-judges them at run time. */
-  private async write(ref: CredentialRef, value: string | undefined): Promise<void> {
+  private async write(ref: CredentialRef, value: string | undefined, scope: CredentialScope): Promise<void> {
     const verb = value === undefined ? 'unset' : 'set'
+    const filename = this.filename(scope)
     if (this.isClosed()) {
       throw new Error(`credentials-local is disposed: cannot ${verb} "${ref}"`)
     }
@@ -380,21 +460,21 @@ export class LocalCredentialProvider extends CredentialProvider {
       this.assertUnshadowed(ref, verb)
       // The writer lock's exclusive create needs the parent to exist; 0700
       // because the harness home holds user-private data.
-      await mkdir(dirname(this.spec.filename), { recursive: true, mode: 0o700 })
-      await withFileLock(this.spec.filename, async () => {
+      await mkdir(dirname(filename), { recursive: true, mode: 0o700 })
+      await withFileLock(filename, async () => {
         // Read-modify-write: fold in any on-disk state this process has not
         // observed yet — an external edit still inside the watcher debounce
         // window, a change the watcher missed, or another process's write —
         // so the line edit below can never resurrect a stale document.
-        await this.reconcileFromDisk()
-        const existing = this.values.get(ref)
+        await this.reconcileFromDisk(scope)
+        const existing = this.values[scope].get(ref)
         if (value === undefined && existing === undefined) return
-        const nextText = renderDocument(this.text, ref, value)
+        const nextText = renderDocument(this.text[scope], ref, value)
         // 0600: a document holding secrets is never world-readable.
-        await writeFileAtomic(this.spec.filename, nextText, { mode: 0o600, dirMode: 0o700 })
-        this.text = nextText
-        if (value === undefined) this.values.delete(ref)
-        else this.values.set(ref, value)
+        await writeFileAtomic(filename, nextText, { mode: 0o600, dirMode: 0o700 })
+        this.text[scope] = nextText
+        if (value === undefined) this.values[scope].delete(ref)
+        else this.values[scope].set(ref, value)
         // After the commit: a broken observer must never make the durable
         // write look failed (an INVARIANT failure still rethrows).
         this.notifyUpdated(ref)
@@ -421,17 +501,18 @@ export class LocalCredentialProvider extends CredentialProvider {
    * plugin's activation, because a credentials document that exists but
    * cannot be trusted must never be treated as "no credentials stored".
    */
-  private async loadInitial(): Promise<void> {
-    await assertOwnerOnly(this.spec.filename)
+  private async loadInitial(scope: CredentialScope): Promise<void> {
+    const filename = this.filename(scope)
+    await assertOwnerOnly(filename)
     let text: string
     try {
-      text = await readFile(this.spec.filename, 'utf8')
+      text = await readFile(filename, 'utf8')
     } catch (error) {
       if (!isENOENT(error)) throw error
       return
     }
-    this.values = parseCredentialsDocument(text, this.spec.filename)
-    this.text = text
+    this.values[scope] = parseCredentialsDocument(text, filename)
+    this.text[scope] = text
   }
 
   /* jscpd:ignore-start -- same deliberate mirror of settings-file's reload and
@@ -444,13 +525,13 @@ export class LocalCredentialProvider extends CredentialProvider {
    * process down. An invariant violation escaping the fan-out is not a reload
    * failure and propagates to the queue's error surface.
    */
-  private async refresh(): Promise<void> {
+  private async refresh(scope: CredentialScope): Promise<void> {
     if (this.closed) return
     try {
-      await this.reconcileFromDisk()
+      await this.reconcileFromDisk(scope)
     } catch (error) {
       if ((error as { code?: unknown } | null)?.code === 'INVARIANT') throw error
-      this.ctx.logger.warn('credentials-local: reload failed at %s; keeping the last good document', this.spec.filename)
+      this.ctx.logger.warn('credentials-local: reload failed at %s; keeping the last good document', this.filename(scope))
       this.ctx.logger.warn(error)
     }
   }
@@ -462,22 +543,23 @@ export class LocalCredentialProvider extends CredentialProvider {
    * and keeps the last good snapshot, a write fails loud rather than
    * overwriting a document it could not understand.
    */
-  private async reconcileFromDisk(): Promise<void> {
+  private async reconcileFromDisk(scope: CredentialScope): Promise<void> {
+    const filename = this.filename(scope)
     // Re-checked on every reload and before every write: an external editor or
     // a restored backup can loosen the mode after boot.
-    await assertOwnerOnly(this.spec.filename)
+    await assertOwnerOnly(filename)
     let text: string | undefined
     try {
-      text = await readFile(this.spec.filename, 'utf8')
+      text = await readFile(filename, 'utf8')
     } catch (error) {
       if (!isENOENT(error)) throw error
       text = undefined
     }
-    if (text === this.text || this.isClosed()) return
-    const next = text === undefined ? new Map<string, string>() : parseCredentialsDocument(text, this.spec.filename)
-    const changed = this.changedRefs(this.values, next)
-    this.text = text
-    this.values = next
+    if (text === this.text[scope] || this.isClosed()) return
+    const next = text === undefined ? new Map<string, string>() : parseCredentialsDocument(text, filename)
+    const changed = this.changedRefs(this.values[scope], next)
+    this.text[scope] = text
+    this.values[scope] = next
     for (const ref of changed) this.notifyUpdated(ref)
   }
   /* jscpd:ignore-end */

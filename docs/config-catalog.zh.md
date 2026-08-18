@@ -556,10 +556,14 @@ export interface Config {
 ```ts config-catalog
 /** Plugin config: file location and hot-reload behavior. */
 export interface Config {
-  /** Credentials document path; defaults to `.credentials.yaml` under the harness home. */
+  /** Project credentials document path; defaults to `.credentials.yaml` under the harness home. */
   path?: string
   /** Harness home used when `path` is omitted; defaults to `$DSH_HOME` or `~/.dsh`. */
   dshHome?: string
+  /** Optional user-global credentials document below the project override. */
+  globalPath?: string
+  /** Scope used by writes that omit a target; `global` requires `globalPath`. */
+  defaultScope?: CredentialScope
   /** Watch the document and hot-publish external edits; defaults to true. */
   watch?: boolean
   /** Watcher write-settle window in milliseconds; defaults to 100. */
@@ -567,7 +571,9 @@ export interface Config {
 }
 ```
 
-来源：[`packages/credentials/credentials-local/src/index.ts:55`](../packages/credentials/credentials-local/src/index.ts)
+依赖：[`CredentialScope`](subsystems/credentials.md)
+
+来源：[`packages/credentials/credentials-local/src/index.ts:58`](../packages/credentials/credentials-local/src/index.ts)
 
 <a id="deepseek-aidsh-e2b"></a>
 
@@ -1278,6 +1284,46 @@ export interface ReconnectConfig {
 ```
 
 来源：[`packages/mcp/mcp-client/src/index.ts:98`](../packages/mcp/mcp-client/src/index.ts)
+
+<a id="deepseek-aidsh-mcp-codex"></a>
+
+## `@deepseek-ai/dsh-mcp-codex`
+
+需要：`subprocess`
+
+```ts config-catalog
+/** Validated MCP service limits and workspace policy. */
+export interface Config {
+  /** Persistent parent directory for per-workspace Harness homes. */
+  dataDirectory?: string
+  /** User-global credentials document shared by supervised workspace services. */
+  credentialsPath?: string
+  /** Canonical workspace roots accepted by tool calls; empty reads DSH_MCP_WORKSPACE_ROOTS. */
+  allowedWorkspaceRoots: string[]
+  /** Web readiness deadline in milliseconds. */
+  startupTimeoutMs: number
+  /** Agent and process-tree shutdown grace in milliseconds. */
+  stopGraceMs: number
+  /** Host RPC and event-stream setup deadline in milliseconds. */
+  rpcTimeoutMs: number
+  /** One platform browser opener settle deadline in milliseconds. */
+  browserOpenTimeoutMs: number
+  /** Delay before reconnecting a previously opened event stream. */
+  eventReconnectDelayMs: number
+  /** Maximum submitted task length in UTF-16 code units. */
+  maxTaskCharacters: number
+  /** Maximum service log tail length in UTF-16 code units. */
+  maxLogCharacters: number
+  /** Maximum inline assistant response in UTF-8 bytes. */
+  maxAssistantTextBytes: number
+  /** Maximum retained tool-activity entries per run snapshot. */
+  maxToolEvents: number
+  /** Per-field UTF-8 cap for retained tool arguments and result summaries. */
+  maxToolEventBytes: number
+}
+```
+
+来源：[`packages/mcp/mcp-codex/src/index.ts:17`](../packages/mcp/mcp-codex/src/index.ts)
 
 <a id="deepseek-aidsh-message-feedback"></a>
 
@@ -2886,6 +2932,8 @@ export interface Config {
   surfaceContext: boolean
   /** Explicit `--trusted-host` authorities from this invocation. */
   trustedHosts: string[]
+  /** Human-readable or machine-readable readiness output. */
+  readyFormat: 'text' | 'json'
 }
 ```
 
@@ -3131,6 +3179,7 @@ export interface Config {
 - `@deepseek-ai/dsh-client-web`（[`packages/client/web/src/index.ts`](../packages/client/web/src/index.ts)）
 - `@deepseek-ai/dsh-client-web-react`（[`packages/client/web-react/src/index.ts`](../packages/client/web-react/src/index.ts)）
 - `@deepseek-ai/dsh-cmdline`（[`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts)）
+- `@deepseek-ai/dsh-codex`（[`packages/bundle/codex/src/index.ts`](../packages/bundle/codex/src/index.ts)）
 - `@deepseek-ai/dsh-home-paths`（[`packages/util/home-paths/src/index.ts`](../packages/util/home-paths/src/index.ts)）
 - `@deepseek-ai/dsh-hook-protocol`（[`packages/hooks/hook-protocol/src/index.ts`](../packages/hooks/hook-protocol/src/index.ts)）
 - `@deepseek-ai/dsh-launch-environment`（[`packages/util/launch-environment/src/index.ts`](../packages/util/launch-environment/src/index.ts)）

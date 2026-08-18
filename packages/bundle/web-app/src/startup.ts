@@ -27,6 +27,8 @@ export interface WebStartupValues {
   port?: number
   /** Explicit `--trusted-host` authorities, in argument order. */
   trustedHosts: string[]
+  /** Machine-readable readiness output selected by `--ready-format`. */
+  readyFormat: 'text' | 'json'
 }
 
 /** The web flag family, as commander parsed it. */
@@ -34,6 +36,7 @@ interface WebOptions {
   host?: string
   port?: string
   trustedHost?: string[]
+  readyFormat?: string
 }
 
 /**
@@ -48,6 +51,7 @@ function webCommand(): Command {
     .option('--host <host>', 'bind host')
     .option('--port <port>', 'listen port; pass 0 to let the OS pick a free one')
     .option('--trusted-host <authority...>', 'extra authority the /api browser-trust fence accepts (host or host:port; repeatable)')
+    .option('--ready-format <format>', 'readiness output: text or json', 'text')
     .addHelpText('after', `
 Examples:
   dsh --profile web                          serve on the composed host and port
@@ -72,10 +76,16 @@ export function apply(ctx: Context): void {
     if (options.port !== undefined && !/^\d+$/.test(options.port)) {
       program.error(`error: --port must be a number, got ${JSON.stringify(options.port)}`)
     }
+    const readyFormat = options.readyFormat
+    if (readyFormat !== 'text' && readyFormat !== 'json') {
+      program.error(`error: --ready-format must be text or json, got ${JSON.stringify(readyFormat)}`)
+      return
+    }
     ctx.provide(WEB_STARTUP_SERVICE, {
       ...options.host !== undefined && { host: options.host },
       ...options.port !== undefined && { port: Number(options.port) },
       trustedHosts: options.trustedHost ?? [],
+      readyFormat,
     } satisfies WebStartupValues)
   })
   parseCmdline(ctx, program)

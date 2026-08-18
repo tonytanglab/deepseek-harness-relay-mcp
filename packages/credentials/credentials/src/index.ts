@@ -13,6 +13,9 @@ import type { CredentialRef } from './types.ts'
 
 export type { CredentialRef } from './types.ts'
 
+/** Writable local credential document selected by configuration surfaces. */
+export type CredentialScope = 'global' | 'project'
+
 const REF_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /**
@@ -43,6 +46,12 @@ export interface CredentialInfo {
   source?: string
   /** Whether {@link CredentialProvider.set} would currently succeed for this reference. */
   writable: boolean
+  /** Writable document scopes exposed by this provider; absent for providers without scoped storage. */
+  writableScopes?: readonly CredentialScope[]
+  /** Scope used when a write omits an explicit target; absent for providers without scoped storage. */
+  defaultScope?: CredentialScope
+  /** Managed document currently supplying the value; absent for non-document sources. */
+  scope?: CredentialScope
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -87,16 +96,18 @@ export abstract class CredentialProvider extends Service {
    * rejects an empty value (use {@link unset}).
    * @param ref - the reference to store.
    * @param value - the non-empty secret value.
+   * @param scope - optional provider-defined writable document scope.
    */
-  abstract set(ref: CredentialRef, value: string): Promise<void>
+  abstract set(ref: CredentialRef, value: string, scope?: CredentialScope): Promise<void>
 
   /**
    * Remove one reference from the provider-managed writable source; removing
    * an absent reference is a no-op. Rejects while a read-only source shadows
    * the reference, like {@link set}.
    * @param ref - the reference to remove.
+   * @param scope - optional provider-defined writable document scope.
    */
-  abstract unset(ref: CredentialRef): Promise<void>
+  abstract unset(ref: CredentialRef, scope?: CredentialScope): Promise<void>
 
   /* jscpd:ignore-start -- deliberate symmetry with the settings seam's commit
      fan-out: the contained-dispatch shape is the reviewed listener-lifecycle

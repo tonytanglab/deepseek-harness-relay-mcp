@@ -1,0 +1,22 @@
+# The dsh-codex bundle patch: an MCP stdio controller over dsh-base. The MCP
+# process stays protocol-clean and starts each visible Web surface as a managed
+# direct-Node child using the separate `web` profile.
+
+- id: hmr
+  disabled: true
+
+- insert:
+    - id: mcp-codex
+      name: '@deepseek-ai/dsh-mcp-codex'
+      config:
+        allowedWorkspaceRoots: []
+        startupTimeoutMs: 60000
+        stopGraceMs: 10000
+        rpcTimeoutMs: 10000
+        browserOpenTimeoutMs: 10000
+        eventReconnectDelayMs: 250
+        maxTaskCharacters: 100000
+        maxLogCharacters: 100000
+        maxAssistantTextBytes: 50000
+        maxToolEvents: 20
+        maxToolEventBytes: 2000

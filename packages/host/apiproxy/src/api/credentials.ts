@@ -9,6 +9,9 @@
 
 import type { RpcRequest, RpcResponse } from './rpc.ts'
 
+/** Writable local credential document selected by the client. */
+export type CredentialScopeView = 'global' | 'project'
+
 /** Wire view of one credential reference's state. */
 export interface CredentialView {
   /** Whether any layer currently supplies a non-empty value. */
@@ -17,6 +20,12 @@ export interface CredentialView {
   source?: string
   /** Whether `credentials.set`/`credentials.unset` can affect this reference. */
   writable: boolean
+  /** Writable document scopes exposed by the provider. */
+  writableScopes?: CredentialScopeView[]
+  /** Scope used when a write omits an explicit target. */
+  defaultScope?: CredentialScopeView
+  /** Managed document currently supplying the value. */
+  scope?: CredentialScopeView
 }
 
 /** Credentials-domain unary methods (the map keys credentials.* of RpcMethodMap). */
@@ -34,11 +43,11 @@ export interface CredentialsApi {
    * shadows the reference — the write would otherwise appear to succeed while
    * resolution keeps returning the shadowing value.
    */
-  set(request: RpcRequest<{ ref: string; value: string }>): Promise<RpcResponse<{}>>
+  set(request: RpcRequest<{ ref: string; value: string; scope?: CredentialScopeView }>): Promise<RpcResponse<{}>>
 
   /**
    * Remove one credential from the writable layer; same shadowing rejection
    * as `set`. Unsetting an absent reference succeeds (idempotent).
    */
-  unset(request: RpcRequest<{ ref: string }>): Promise<RpcResponse<{}>>
+  unset(request: RpcRequest<{ ref: string; scope?: CredentialScopeView }>): Promise<RpcResponse<{}>>
 }

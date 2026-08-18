@@ -514,14 +514,14 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'configured state, supplying source, and writability.',
       },
       {
-        signature: 'abstract set(ref: CredentialRef, value: string): Promise<void>',
+        signature: 'abstract set(ref: CredentialRef, value: string, scope?: CredentialScope): Promise<void>',
         description: 'Durably store one value in the provider-managed writable source. Rejects while a read-only source shadows the reference — the write would appear to succeed while resolution keeps returning the shadowing value — and rejects an empty value (use unset).',
-        parameters: [{ name: 'ref', description: 'the reference to store.' }, { name: 'value', description: 'the non-empty secret value.' }],
+        parameters: [{ name: 'ref', description: 'the reference to store.' }, { name: 'value', description: 'the non-empty secret value.' }, { name: 'scope', description: 'optional provider-defined writable document scope.' }],
       },
       {
-        signature: 'abstract unset(ref: CredentialRef): Promise<void>',
+        signature: 'abstract unset(ref: CredentialRef, scope?: CredentialScope): Promise<void>',
         description: 'Remove one reference from the provider-managed writable source; removing an absent reference is a no-op. Rejects while a read-only source shadows the reference, like set.',
-        parameters: [{ name: 'ref', description: 'the reference to remove.' }],
+        parameters: [{ name: 'ref', description: 'the reference to remove.' }, { name: 'scope', description: 'optional provider-defined writable document scope.' }],
       },
     ],
   },
@@ -2915,11 +2915,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CredentialInfo',
-    declaration: 'export interface CredentialInfo {\n    configured: boolean;\n    source?: string;\n    writable: boolean;\n}',
+    declaration: 'export interface CredentialInfo {\n    configured: boolean;\n    source?: string;\n    writable: boolean;\n    writableScopes?: readonly CredentialScope[];\n    defaultScope?: CredentialScope;\n    scope?: CredentialScope;\n}',
   },
   {
     name: 'CredentialRef',
     declaration: 'export type CredentialRef = Branded<\'CredentialRef\'>;',
+  },
+  {
+    name: 'CredentialScope',
+    declaration: 'export type CredentialScope = \'global\' | \'project\';',
   },
   {
     name: 'DiffCallView',

@@ -231,6 +231,15 @@ describe('current selection (migrated from ui-layout, arbitrated into the list s
     await feedList(second, [{ id: 's1' }])
     expect(second.svc.list.getSnapshot().current).toBe('s1')
   })
+
+  it('gives a sessionId deep link priority and retains an unknown id for a visible history error', async () => {
+    vi.stubGlobal('location', { search: '?fixture=demo&sessionId=linked-session' })
+    const b = bench()
+    await feedList(b, [{ id: 'other-session' }])
+    expect(b.svc.list.getSnapshot().current).toBe('linked-session')
+    expect(b.api.calls.filter(call => call.method === 'session.history'))
+      .toMatchObject([{ payload: { sessionId: 'linked-session' } }])
+  })
 })
 
 describe('cell (render-layer session kit)', () => {
@@ -642,7 +651,7 @@ describe('blank mirror', () => {
     // In flight: still blank (the flip point is the success response, which
     // proves the user message reached the host log).
     expect(session.getSnapshot().blank).toBe(true)
-    gate.resolve(ok({ accepted: true as const }))
+    gate.resolve(ok({ accepted: true as const, messageId: 'accepted-message' as never }))
     await send
     expect(session.getSnapshot().blank).toBe(false)
     await Promise.resolve()

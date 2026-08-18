@@ -31,7 +31,7 @@ interface ResolvedCredential {
 
 ## 描述
 
-`describe(ref)` 在绝不暴露值的前提下回应配置界面：引用当前是否可解析、来自哪一层、`set` 当前能否成功。本地提供方把由当前进程环境供值的引用报告为 `writable: false`——那样的写入会表面成功而解析持续返回遮蔽值，因此 seam 直接拒绝，界面也得以提前把该引用渲染为只读。
+`describe(ref)` 在绝不暴露值的前提下回应配置界面：引用当前是否可解析、来自哪一层、`set` 当前能否成功。拥有多个可写文档的提供方还会报告可写作用域、默认写入作用域，以及当前提供值的受管作用域。本地提供方把由当前进程环境供值的引用报告为 `writable: false`——那样的写入会表面成功而解析持续返回遮蔽值，因此 seam 直接拒绝，界面也得以提前把该引用渲染为只读。
 
 ```ts type-equiv
 /** Source and writability facts for one reference, safe for configuration UIs — never the value. */
@@ -42,6 +42,12 @@ interface CredentialInfo {
   source?: string
   /** Whether {@link CredentialProvider.set} would currently succeed for this reference. */
   writable: boolean
+  /** Writable document scopes exposed by this provider; absent for providers without scoped storage. */
+  writableScopes?: readonly CredentialScope[]
+  /** Scope used when a write omits an explicit target; absent for providers without scoped storage. */
+  defaultScope?: CredentialScope
+  /** Managed document currently supplying the value; absent for non-document sources. */
+  scope?: CredentialScope
 }
 ```
 
@@ -89,19 +95,21 @@ abstract describe(ref: CredentialRef): Promise<CredentialInfo>
  * rejects an empty value (use {@link unset}).
  * @param ref - the reference to store.
  * @param value - the non-empty secret value.
+ * @param scope - optional provider-defined writable document scope.
  */
-abstract set(ref: CredentialRef, value: string): Promise<void>
+abstract set(ref: CredentialRef, value: string, scope?: CredentialScope): Promise<void>
 
 /**
  * Remove one reference from the provider-managed writable source; removing
  * an absent reference is a no-op. Rejects while a read-only source shadows
  * the reference, like {@link set}.
  * @param ref - the reference to remove.
+ * @param scope - optional provider-defined writable document scope.
  */
-abstract unset(ref: CredentialRef): Promise<void>
+abstract unset(ref: CredentialRef, scope?: CredentialScope): Promise<void>
 ```
 
-Source: [`packages/credentials/credentials/src/index.ts:60`](../../packages/credentials/credentials/src/index.ts)
+Source: [`packages/credentials/credentials/src/index.ts:69`](../../packages/credentials/credentials/src/index.ts)
 
 <a id="credentials-events"></a>
 

@@ -23,7 +23,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { CredentialView, IApiClient, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
+import type {
+  CredentialScopeView, CredentialView, IApiClient, SettingsNamespaceView, SettingsPathOpView,
+} from '@deepseek-ai/dsh-api-remotes/client'
 import {
   deletePath, getPath, hasPath, nodeAtPath, rehydrateSchema, setPath, validateDraft,
 } from '@deepseek-ai/dsh-client-schema-form'
@@ -147,6 +149,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   const [draft, setDraft] = useState<Record<string, unknown>>(() => draftAt(namespace, settingsPath))
   const [keyDraft, setKeyDraft] = useState('')
   const [keyState, setKeyState] = useState<CredentialView | undefined>(undefined)
+  const [keyScope, setKeyScope] = useState<CredentialScopeView | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
   // A settings success advances both retry baselines immediately. Keeping the
@@ -174,6 +177,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   useEffect(() => {
     let stale = false
     setKeyState(undefined)
+    setKeyScope(undefined)
     // The key state is a placeholder hint, not a precondition for editing:
     // neither a business rejection nor a transport failure may reach the
     // browser as an unhandled rejection, so the card simply renders without
@@ -181,7 +185,9 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
     void api.credentials.describe({ refs: [keyRef] }).then(
       (response) => {
         if (stale || !response.result.ok) return
-        setKeyState(response.result.value.credentials[keyRef])
+        const state = response.result.value.credentials[keyRef]
+        setKeyState(state)
+        setKeyScope(state?.scope ?? state?.defaultScope)
       },
       () => undefined,
     )
@@ -279,8 +285,16 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       setDraft(next)
     }
     if (keyValue.length > 0) {
-      const stored = await api.credentials.set({ ref: keyRef, value: keyValue })
+      const stored = await api.credentials.set({
+        ref: keyRef,
+        value: keyValue,
+        ...keyScope === undefined ? {} : { scope: keyScope },
+      })
       if (!stored.result.ok) return stored.result.error.message
+      if (keyScope === 'global' && keyState?.scope === 'project') {
+        const removedOverride = await api.credentials.unset({ ref: keyRef, scope: 'project' })
+        if (!removedOverride.result.ok) return removedOverride.result.error.message
+      }
     }
     setKeyDraft('')
     return undefined
@@ -376,6 +390,24 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
           />
           {shownKeyFailure === undefined ? null : <p className={styles['error']}>{t(shownKeyFailure)}</p>}
         </div>
+        {(keyState?.writableScopes?.length ?? 0) > 1
+          ? (
+            <div className={styles['field']}>
+              <span className={styles['fieldLabel']}>{t('credentialScope')}</span>
+              <select
+                className={`${styles['input']} ${styles['selectInput']}`}
+                value={keyScope ?? keyState?.defaultScope ?? 'project'}
+                aria-label={t('credentialScope')}
+                disabled={disabled || keyLocked}
+                onChange={(event) => { setKeyScope(event.target.value as CredentialScopeView) }}
+              >
+                <option value="global">{t('credentialScopeGlobal')}</option>
+                <option value="project">{t('credentialScopeProject')}</option>
+              </select>
+              <p className={styles['advancedHint']}>{t('credentialScopeHint')}</p>
+            </div>
+          )
+          : null}
         {props.credentialOnly === true ? null : <details className={styles['customized']}>
           <summary className={styles['customizedSummary']}>{t('customized')}</summary>
           <div className={styles['customizedBody']}>

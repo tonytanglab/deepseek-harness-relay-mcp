@@ -1,0 +1,10 @@
+# Web-profile helper. It must not mount @deepseek-ai/dsh-mcp-codex: that plugin
+# owns process stdin/stdout as MCP stdio and would break the Web UI.
+- insert:
+    - id: relay
+      name: dsh-relay
+      config:
+        mcpServerName: dsh-relay
+        allowedWorkspaceRoots: []
+        dshPackage: '@deepseek-ai/dsh@0.1.0-rc.5'
+        host: codex

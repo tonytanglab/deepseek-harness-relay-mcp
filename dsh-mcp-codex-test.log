@@ -1,0 +1,56 @@
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+
+ RUN  v4.1.8 D:/app/git/deepseek-harness
+
+ ❯ |thread-safe| packages/mcp/mcp-codex/tests/manager.spec.ts (21 tests | 1 failed) 474ms
+     × retains only the most recent maxToolEvents tool entries 10ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |thread-safe| packages/mcp/mcp-codex/tests/manager.spec.ts > Codex MCP lifecycle manager > retains only the most recent maxToolEvents tool entries
+AssertionError: expected [ { kind: 'call', …(4) }, …(1) ] to deeply equal [ { kind: 'result', …(4) }, …(1) ]
+
+- Expected
++ Received
+
+  [
+    {
+-     "callId": "tool-call-2",
+-     "error": null,
+-     "kind": "result",
+-     "summary": "out-2",
+-     "truncated": false,
+-   },
+-   {
+      "arguments": "{\"n\":3}",
+      "callId": "tool-call-3",
+      "kind": "call",
+      "name": "tool-3",
++     "truncated": false,
++   },
++   {
++     "callId": "tool-call-3",
++     "error": null,
++     "kind": "result",
++     "summary": "out-3",
+      "truncated": false,
+    },
+  ]
+
+ ❯ packages/mcp/mcp-codex/tests/manager.spec.ts:598:32
+    596|     const { manager, workspace } = await setup({ maxToolEvents: 2 })
+    597|     const run = await manager.start({ workspace, task: 'tool-storm' })
+    598|     expect(run.lastToolEvents).toEqual([
+       |                                ^
+    599|       { kind: 'result', callId: 'tool-call-2', summary: 'out-2', error…
+    600|       { kind: 'call', callId: 'tool-call-3', name: 'tool-3', arguments…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 25 passed (26)
+   Start at  11:56:47
+   Duration  1.84s (transform 1.08s, setup 701ms, import 1.06s, tests 547ms, environment 0ms)

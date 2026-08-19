@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 0.1.3 - 2026-08-19
+
+- MCP stdio attaches to the already-running Harness Web (`http://127.0.0.1:3080`) so Cursor and Codex share one Relay server. `start_run` can select a model (`k3`, `Kimi K3`) via `session.selectModel` before prompting, and returns `webUrl` as a link without opening a browser. `relay_write_mcp_config` writes Cursor JSON or Codex TOML. The Web plugin still does not own stdin/stdout.
+
 ## 0.1.2 - 2026-08-19
 
 - 将 MCP 启动包同步至最新版 DeepSeek Harness `0.1.0-rc.7`，并验证真实 Web profile 安装与运行。

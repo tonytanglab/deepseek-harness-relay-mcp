@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-Web profile 辅助插件：检测 Codex MCP 启动路径并写入宿主配置，供 Codex、Cursor 或 Claude Code 拉起 `dsh --profile codex`。它不会在 Web 进程内运行 MCP stdio 服务器。
+Web profile 辅助插件：写入 MCP 配置，让 **Cursor、Codex 或 Claude Code** 接到已经在跑的 Harness Web（默认 `http://127.0.0.1:3080`）。它不会在 Web 进程内运行 MCP stdio，也不会再拉起 `dsh --profile codex`。
 
 安装到 profile：
 
@@ -28,27 +28,28 @@ dsh plugin --profile web add file:/absolute/path/to/deepseek-harness-relay-mcp
 
 - `/relay-setup` 打印 doctor 摘要和 MCP 启动 JSON。若设置了 `mcpConfigPath`，还会写入该 JSON。额外输入会被拒绝。
 - `relay_doctor` 检查 `process.argv[1]` 是否为绝对且存在的 dsh 入口、`process.execPath` 是否存在、凭证路径是否存在；不读取凭证内容，也不启动 MCP stdio。
-- `relay_write_mcp_config` 按 [Codex 指南](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/codex.md) 生成 npx 启动块。当 `path` 是绝对 JSON 文件时写入，并合并 `mcpServers` 以保留其他服务器。
+- `relay_write_mcp_config` 写入 `node <plugin>/lib/mcp.js` 启动块。`path` 为绝对 JSON 时写入 Cursor/Claude 配置；为绝对 TOML 时写入 Codex `config.toml`。
 
-生成的命令是 `npx --yes --package=@deepseek-ai/dsh@0.1.0-rc.7 -- dsh --profile codex`。本插件从不使用 `npx.cmd` 或 `shell: true`，也从不导入 `StdioServerTransport`。
+生成的命令是 `node <plugin>/lib/mcp.js`，并带上 `DSH_WEB_URL=http://127.0.0.1:3080`。本插件从不使用 `npx.cmd` 或 `shell: true`，Web 进程也从不导入 `StdioServerTransport`。
 
 ## 配置
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `mcpServerName` | `dsh-relay` | `mcpServers` 下的键 |
-| `mcpConfigPath` | 未设置 | `/relay-setup` 写入的绝对 JSON 路径 |
+| `mcpConfigPath` | 未设置 | `/relay-setup` 写入的绝对 JSON 或 Codex TOML 路径 |
 | `allowedWorkspaceRoots` | `[]` | 空则读取 `DSH_MCP_WORKSPACE_ROOTS` |
 | `credentialsPath` | `$DSH_HOME/.credentials.yaml` | 共享凭证文档；也可用 `DSH_MCP_CREDENTIALS_PATH` |
 | `dataDirectory` | `$DSH_HOME/codex-services` | Codex 服务主目录；也可用 `DSH_MCP_DATA_DIR` |
-| `dshPackage` | `@deepseek-ai/dsh@0.1.0-rc.7` | 生成 npx 参数时钉死的包 |
+| `dshPackage` | `@deepseek-ai/dsh@0.1.0-rc.7` | 兼容保留 |
 | `host` | `codex` | `/relay-setup` 写入的默认宿主：`codex`、`cursor` 或 `claude-code` |
+| `webUrl` | `http://127.0.0.1:3080` | MCP 要接入的、已经在跑的 Harness Web |
 
 用户可在 profile 的 `cordis.patch.yml` 中覆盖这些行。无效配置会在插件加载时失败。
 
 ## 配置之后
 
-把 MCP 宿主指向打印出的启动块。会话的启动、等待、steering（中途引导）和取消仍由 `dsh --profile codex` 提供，见 [`@deepseek-ai/dsh-mcp-codex`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/mcp-codex/README.md) 与 [Codex 指南](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/codex.md)。附带的 [skill](skill/SKILL.md) 描述该工作流。
+把 Cursor（`~/.cursor/mcp.json`）和 Codex（`~/.codex/config.toml`）都指向同一份启动块。两个宿主调用同一个 Relay MCP。`start_run` 可传 `model` / `provider`（例如 `k3`），并返回会话链接，默认不打开系统浏览器。
 
 ## Model Experience
 
@@ -70,7 +71,7 @@ dsh plugin --profile web add file:/absolute/path/to/deepseek-harness-relay-mcp
 
 #### 模型看见什么
 
-`relay_doctor` 返回含 `ok`、launcher 的 `direct`/`exists`/`shell: false`、工作区根和凭证 `path`/`exists` 的 JSON，从不包含凭证文件内容。`relay_write_mcp_config` 返回 `{ written, path, host, serverName, config }`，其中 `config.args` 含 `--profile` 与 `codex`。`/relay-setup` 成功文本以 `DSH Relay is loaded in this Web profile. It does not run the MCP stdio server here.` 开头。额外输入返回 `The /relay-setup command does not accept extra input.`
+`relay_doctor` 返回含 `ok`、launcher 的 `direct`/`exists`/`shell: false`、工作区根和凭证 `path`/`exists` 的 JSON，从不包含凭证文件内容。`relay_write_mcp_config` 返回 `{ written, path, host, serverName, config }`，其中 `config.args` 以 `mcp.js` 结尾，`config.env` 含 `DSH_WEB_URL`。`/relay-setup` 成功文本以 `DSH Relay is loaded in this Web profile. It does not run the MCP stdio server here.` 开头。额外输入返回 `The /relay-setup command does not accept extra input.`
 
 #### Token 影响
 
@@ -82,5 +83,5 @@ dsh plugin --profile web add file:/absolute/path/to/deepseek-harness-relay-mcp
 
 ## Known Limitations and Deferred Work
 
-- **进程内没有 MCP stdio** — 把本 bundle 装进 web profile 不会露出 Codex 的十一个 MCP 工具。那些工具仍在 `dsh --profile codex`。
+- **进程内没有 MCP stdio** — 把本 bundle 装进 web profile 不会露出 `start_run` / `wait_run` / `steer_run`。那些工具在 Cursor 和 Codex 启动的独立 `lib/mcp.js` stdio 服务器上。
 - **没有 Settings UI** — v0.1.x 没有 `dsh.client` 表单；配置路径是 `/relay-setup` 和这两个工具。

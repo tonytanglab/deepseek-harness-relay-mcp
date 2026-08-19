@@ -57,18 +57,14 @@ describe('dsh-relay plugin', () => {
     const done = await ctx.commands.execute(agent, '/relay-setup', signal)
     expect(done?.result.kind).toBe('success')
     expect(done?.result.text).toContain('does not run the MCP stdio server here')
-    expect(done?.result.text).toContain('"command": "npx"')
-    expect(done?.result.text).toContain('--profile')
-    expect(done?.result.text).toContain('codex')
-    const written = JSON.parse(await readFile(path, 'utf8')) as { mcpServers: { 'dsh-relay': { args: string[] } } }
-    expect(written.mcpServers['dsh-relay'].args).toEqual([
-      '--yes',
-      '--package=@deepseek-ai/dsh@0.1.0-rc.7',
-      '--',
-      'dsh',
-      '--profile',
-      'codex',
-    ])
+    expect(done?.result.text).toContain('DSH_WEB_URL')
+    expect(done?.result.text).toContain('mcp.js')
+    const written = JSON.parse(await readFile(path, 'utf8')) as {
+      mcpServers: { 'dsh-relay': { command: string; args: string[]; env: { DSH_WEB_URL: string } } }
+    }
+    expect(written.mcpServers['dsh-relay'].command).toBe(process.execPath)
+    expect(written.mcpServers['dsh-relay'].args[0]?.replaceAll('\\', '/')).toMatch(/mcp\.js$/)
+    expect(written.mcpServers['dsh-relay'].env.DSH_WEB_URL).toBe('http://127.0.0.1:3080')
   })
 
   it('prints a launch block without writing when path is omitted', async () => {
@@ -85,7 +81,7 @@ describe('dsh-relay plugin', () => {
       path: null,
       host: 'claude-code',
       serverName: 'dsh-relay',
-      config: { command: 'npx' },
+      config: { command: process.execPath },
     })
   })
 })

@@ -7,17 +7,17 @@
 ## 配置 MCP 宿主
 
 1. 调用 `relay_doctor`（或 `/relay-setup`），修复任何 `ok: false` 的启动器或凭证检查。`shell` 必须保持 `false`。
-2. 调用 `relay_write_mcp_config`，将 `host` 设为 `codex`、`cursor` 或 `claude-code`。仅在写入绝对 JSON 文件时传入 `path`。
-3. 把该宿主指向返回的 `config`：`npx --yes --package=@deepseek-ai/dsh@<pinned> -- dsh --profile codex`，以及其中的 `env` 键。
+2. 调用 `relay_write_mcp_config`，将 `host` 设为 `codex`、`cursor` 或 `claude-code`。写入 Cursor/Claude 的 JSON（`~/.cursor/mcp.json`）或 Codex 的 TOML（`~/.codex/config.toml`）时传入 `path`。
+3. 把该宿主指向返回的 `config`：`node <plugin>/lib/mcp.js`，并带上 `DSH_WEB_URL=http://127.0.0.1:3080`。Cursor 和 Codex 必须共用这一台 Relay MCP。
 
 ## 宿主连上之后
 
-MCP 服务器是 `dsh --profile codex`，不是这个 Web 插件。在那台服务器上：
+Cursor 和 Codex 共用这台 Relay MCP。它接到已经在跑的 Harness Web：
 
 1. 调用 `doctor` 并处理失败项。
-2. 调用 `start_run`，传入完整任务和绝对 `workspace`。
-3. 立即展示 `webUrl`。
+2. 调用 `start_run`，传入完整任务、绝对 `workspace`；用户点名模型时再传 `model`（例如 `k3`）。不要设置 `openBrowser`。
+3. 立刻用 Markdown 给出 `webUrl` 链接（`http://127.0.0.1:3080/?sessionId=...`）。不要打开系统浏览器。
 4. 以不超过 30 秒的间隔调用 `wait_run`。现场纠正使用 `steer_run`。
 5. 用 `cancel_run` 停止进行中的轮次。已结束的会话用 `start_run.sessionId` 继续。
 
-不要把生成的命令再包一层 `npx.cmd` 或 shell。
+不要再拉起 `dsh --profile codex`。不要把命令再包一层 `npx.cmd` 或 shell。

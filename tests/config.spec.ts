@@ -43,6 +43,7 @@ describe('resolveConfig', () => {
     expect(resolved.dataDirectory).toBe(resolve('/tmp/data'))
     expect(resolved.dshPackage).toBe('@deepseek-ai/dsh@9.9.9')
     expect(resolved.host).toBe('cursor')
+    expect(resolved.webUrl).toBe('http://127.0.0.1:3080')
   })
 
   it('falls back to ~/.dsh when DSH_HOME is unset', () => {

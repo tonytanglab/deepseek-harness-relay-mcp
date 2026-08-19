@@ -3,12 +3,14 @@
 import { delimiter, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import type { McpHost } from './hosts.ts'
+import { DEFAULT_WEB_URL, resolveWebUrl } from './harness-rpc.ts'
+export { DEFAULT_WEB_URL }
 
 /** Published helper identity. */
 export const PACKAGE_NAME = 'dsh-relay'
 
 /** Published helper version. */
-export const PACKAGE_VERSION = '0.1.2'
+export const PACKAGE_VERSION = '0.1.3'
 
 /** Pinned CLI package used in generated MCP launch args. */
 export const DEFAULT_DSH_PACKAGE = '@deepseek-ai/dsh@0.1.0-rc.7'
@@ -25,6 +27,7 @@ export interface ResolvedConfig {
   dataDirectory: string
   dshPackage: string
   host: McpHost
+  webUrl: string
 }
 
 /** Environment overlay used when resolving optional paths and workspace roots. */
@@ -33,6 +36,8 @@ export interface ResolveEnv {
   DSH_MCP_WORKSPACE_ROOTS?: string
   DSH_MCP_CREDENTIALS_PATH?: string
   DSH_MCP_DATA_DIR?: string
+  DSH_WEB_URL?: string
+  DSH_MCP_WEB_URL?: string
 }
 
 /**
@@ -49,6 +54,7 @@ export function resolveConfig(config: {
   dataDirectory?: string
   dshPackage: string
   host: McpHost
+  webUrl?: string
 }, env: ResolveEnv = process.env): ResolvedConfig {
   const home = env.DSH_HOME?.trim() || resolve(homedir(), '.dsh')
   const configuredRoots = config.allowedWorkspaceRoots.length > 0
@@ -64,5 +70,6 @@ export function resolveConfig(config: {
       || resolve(home, 'codex-services')),
     dshPackage: config.dshPackage,
     host: config.host,
+    webUrl: resolveWebUrl(config.webUrl?.trim() || env.DSH_WEB_URL?.trim() || env.DSH_MCP_WEB_URL?.trim() || DEFAULT_WEB_URL),
   }
 }

@@ -1,6 +1,7 @@
 /**
- * Web-profile helper that diagnoses the Codex MCP launch path and writes host
- * configuration. It never connects MCP stdio in this process.
+ * Web-profile helper that writes MCP config so Cursor, Codex, or Claude Code
+ * can attach to an already-running Harness Web. It never connects MCP stdio
+ * in this process.
  *
  * Namespace plugin (named exports, no default export).
  * @module dsh-relay
@@ -19,6 +20,7 @@ import {
   resolveConfig,
   type ResolvedConfig,
 } from './config.ts'
+import { DEFAULT_WEB_URL } from './harness-rpc.ts'
 import { inspectRuntime, type DoctorReport } from './doctor.ts'
 import { MCP_HOSTS, parseMcpHost, type McpHost } from './hosts.ts'
 import { buildMcpLaunch, writeMcpConfigFile, type McpServerLaunch } from './mcp-config.ts'
@@ -41,10 +43,12 @@ export interface Config {
   credentialsPath?: string
   /** Parent directory for per-workspace Codex service homes. */
   dataDirectory?: string
-  /** Pinned `@deepseek-ai/dsh@<version>` used in generated npx args. */
+  /** Pinned `@deepseek-ai/dsh@<version>` kept for compatibility. */
   dshPackage: string
   /** Default MCP host for `/relay-setup` writes. */
   host: McpHost
+  /** Already-running Harness Web origin the host MCP attaches to. */
+  webUrl?: string
 }
 
 export const Config: z<Config> = z.object({
@@ -55,11 +59,12 @@ export const Config: z<Config> = z.object({
   dataDirectory: z.string(),
   dshPackage: z.string().default(DEFAULT_DSH_PACKAGE),
   host: z.union(['codex', 'cursor', 'claude-code'] as const).default('codex'),
+  webUrl: z.string().default(DEFAULT_WEB_URL),
 })
 
-const DOCTOR_DESCRIPTION = 'Check the direct Node launcher, pinned dsh package, workspace policy, and credentials path without reading credential contents or starting MCP stdio.'
-const WRITE_DESCRIPTION = 'Build the MCP stdio launch block for Codex, Cursor, or Claude Code that starts dsh --profile codex. Writes the block when a path is supplied; does not start MCP in this process.'
-const SETUP_DESCRIPTION = 'Diagnose the Codex MCP launch path and print or write its configuration. This Web profile does not run the MCP stdio server.'
+const DOCTOR_DESCRIPTION = 'Check the direct Node launcher, workspace policy, and credentials path without reading credential contents or starting MCP stdio.'
+const WRITE_DESCRIPTION = 'Build the MCP stdio launch block for Codex, Cursor, or Claude Code that attaches to the already-running Harness Web. Writes the block when a path is supplied; does not start MCP in this process.'
+const SETUP_DESCRIPTION = 'Diagnose the Harness attach path and print or write MCP configuration. This Web profile does not run the MCP stdio server.'
 const SETUP_EXTRA_INPUT = 'The /relay-setup command does not accept extra input.'
 
 interface WriteResult {
@@ -102,11 +107,11 @@ export function apply(ctx: Context, config: Config): void {
         type: 'string',
         required: true,
         enum: MCP_HOSTS,
-        description: 'MCP host that will spawn dsh --profile codex',
+        description: 'MCP host that will attach to the running Harness Web',
       },
       path: {
         type: 'string',
-        description: 'Absolute JSON file to merge the server block into',
+        description: 'Absolute JSON (Cursor/Claude) or TOML (Codex config.toml) file to merge the server block into',
       },
     },
     output: {
@@ -123,7 +128,7 @@ export function apply(ctx: Context, config: Config): void {
 }
 
 export type { DoctorReport, McpHost, McpServerLaunch, ResolvedConfig, WriteResult }
-export { buildMcpLaunch, DEFAULT_DSH_PACKAGE, inspectRuntime, MCP_HOSTS, resolveConfig }
+export { buildMcpLaunch, DEFAULT_DSH_PACKAGE, DEFAULT_WEB_URL, inspectRuntime, MCP_HOSTS, resolveConfig }
 
 async function runSetup(config: ResolvedConfig, rawInput: string): Promise<CommandResult> {
   if (rawInput.trim() !== '') return { kind: 'error', text: SETUP_EXTRA_INPUT }

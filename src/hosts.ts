@@ -1,4 +1,4 @@
-/** MCP hosts that spawn `dsh --profile codex` over stdio. */
+/** MCP hosts that launch the shared `lib/mcp.js` attach server over stdio. */
 
 /** Closed set of MCP hosts this helper can write a launch block for. */
 export const MCP_HOSTS = ['codex', 'cursor', 'claude-code'] as const

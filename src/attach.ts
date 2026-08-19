@@ -4,7 +4,8 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { isAbsolute } from 'node:path'
 import { callHarness, sessionUrl, type SessionSummary, type WorkspaceView } from './harness-rpc.ts'
-import { resolveCatalogModel, type ModelSelection, type SessionModels } from './models.ts'
+import { resolveCatalogModel, summarizeCatalog, type ModelSelection, type SessionModels } from './models.ts'
+import { inspectTurn, isInsideWorkspace, maxEventSeq, unwrapHistory, type HistoryPage } from './run-state.ts'
 
 const execFileAsync = promisify(execFile)
 
@@ -22,6 +23,7 @@ export interface RunSnapshot {
   workspace: string
   webUrl: string
   model: ModelSelection | null
+  text: string | null
   status: 'running' | 'succeeded' | 'failed' | 'cancelled'
   cancelRequested: boolean
   startedAt: string
@@ -40,8 +42,7 @@ export interface ServiceSnapshot {
 }
 
 interface RunRecord extends RunSnapshot {
-  baselineUpdatedAt: number
-  sawRunning: boolean
+  afterSeq: number
 }
 
 /**
@@ -55,6 +56,16 @@ export class AttachManager {
 
   async doctor(): Promise<object> {
     const listed = await callHarness<{ items: SessionSummary[] }>(this.config.webUrl, 'session.list')
+    let models: ReturnType<typeof summarizeCatalog> | null = null
+    for (const item of listed.items) {
+      try {
+        const directory = await callHarness<SessionModels>(this.config.webUrl, 'session.models', { sessionId: item.sessionId })
+        models = summarizeCatalog(directory)
+        break
+      } catch {
+        continue
+      }
+    }
     return {
       ok: true,
       attached: true,
@@ -64,6 +75,7 @@ export class AttachManager {
         restricted: this.config.allowedWorkspaceRoots.length > 0,
         roots: this.config.allowedWorkspaceRoots,
       },
+      models: models ?? { current: null, groups: [] },
     }
   }
 
@@ -108,7 +120,6 @@ export class AttachManager {
     const listed = await callHarness<{ items: SessionSummary[] }>(this.config.webUrl, 'session.list')
     let sessionId = input.sessionId?.trim()
     let sessionReused = false
-    let baselineUpdatedAt = 0
     if (sessionId === undefined || sessionId === '') {
       const created = await callHarness<{ sessionId: string }>(this.config.webUrl, 'session.create', {
         workspaceId: createdWs.workspace.workspaceId,
@@ -119,9 +130,13 @@ export class AttachManager {
       if (summary === undefined) throw new Error(`unknown sessionId: ${sessionId}`)
       if (summary.running) throw new Error(`Harness session is still running: ${sessionId}`)
       sessionReused = true
-      baselineUpdatedAt = summary.updatedAt
     }
     const model = await this.selectModel(sessionId, input)
+    const prior = await callHarness<HistoryPage>(this.config.webUrl, 'session.history', {
+      sessionId,
+      maxMessages: 20,
+    })
+    const afterSeq = maxEventSeq(unwrapHistory(prior))
     await callHarness(this.config.webUrl, 'session.prompt', {
       sessionId,
       mode: 'queue',
@@ -137,13 +152,13 @@ export class AttachManager {
       workspace: input.workspace,
       webUrl: sessionUrl(this.config.webUrl, sessionId),
       model,
+      text: null,
       status: 'running',
       cancelRequested: false,
       startedAt: new Date().toISOString(),
       finishedAt: null,
       error: null,
-      baselineUpdatedAt,
-      sawRunning: false,
+      afterSeq,
     }
     this.runs.set(runId, record)
     if (input.openBrowser === true) {
@@ -167,8 +182,10 @@ export class AttachManager {
     return { runId, accepted: true }
   }
 
-  get(runId: string): RunSnapshot {
-    return this.publicRun(this.requireRun(runId))
+  async get(runId: string): Promise<RunSnapshot> {
+    const run = this.requireRun(runId)
+    await this.refresh(run)
+    return this.publicRun(run)
   }
 
   async wait(runId: string, timeoutMs = 30_000): Promise<RunSnapshot> {
@@ -182,17 +199,23 @@ export class AttachManager {
     return this.publicRun(run)
   }
 
-  list(serviceId?: string): RunSnapshot[] {
+  async list(serviceId?: string): Promise<RunSnapshot[]> {
     if (serviceId !== undefined && serviceId !== this.serviceId) return []
-    return [...this.runs.values()].map(run => this.publicRun(run))
+    const runs = [...this.runs.values()]
+    await Promise.all(runs.map(run => this.refresh(run)))
+    return runs.map(run => this.publicRun(run))
   }
 
   async cancel(runId: string): Promise<RunSnapshot> {
     const run = this.requireRun(runId)
-    run.cancelRequested = true
+    if (run.status !== 'running') throw new Error(`run is not active: ${runId}`)
     await callHarness(this.config.webUrl, 'session.cancel', { sessionId: run.sessionId })
-    run.status = 'cancelled'
-    run.finishedAt = new Date().toISOString()
+    run.cancelRequested = true
+    await this.refresh(run)
+    if (run.status === 'running') {
+      run.status = 'cancelled'
+      run.finishedAt = new Date().toISOString()
+    }
     return this.publicRun(run)
   }
 
@@ -200,19 +223,24 @@ export class AttachManager {
     const listed = await callHarness<{ items: SessionSummary[] }>(this.config.webUrl, 'session.list')
     const summary = listed.items.find(item => item.sessionId === run.sessionId)
     if (summary === undefined) {
-      run.status = 'failed'
-      run.error = 'session disappeared from Harness'
-      run.finishedAt = new Date().toISOString()
+      if (run.status === 'running') {
+        run.status = 'failed'
+        run.error = 'session disappeared from Harness'
+        run.finishedAt = new Date().toISOString()
+      }
       return
     }
-    if (summary.running) run.sawRunning = true
-    if (run.sawRunning && !summary.running) {
-      run.status = run.cancelRequested ? 'cancelled' : 'succeeded'
-      run.finishedAt = new Date().toISOString()
-    } else if (!summary.running && summary.updatedAt > run.baselineUpdatedAt && summary.blank === false) {
-      run.status = 'succeeded'
-      run.finishedAt = new Date().toISOString()
-    }
+    const page = await callHarness<HistoryPage>(this.config.webUrl, 'session.history', {
+      sessionId: run.sessionId,
+      maxMessages: 40,
+    })
+    const outcome = inspectTurn(unwrapHistory(page), run.afterSeq, run.cancelRequested)
+    if (outcome.text !== null) run.text = outcome.text
+    if (run.status !== 'running') return
+    if (!outcome.ended) return
+    run.status = outcome.status ?? 'succeeded'
+    run.error = outcome.error
+    run.finishedAt = new Date().toISOString()
   }
 
   private async selectModel(
@@ -226,7 +254,7 @@ export class AttachManager {
       sessionId,
       provider: resolved.provider,
       model: resolved.model,
-      ...input.reasoningEffort?.trim() ? { reasoningEffort: input.reasoningEffort.trim() } : {},
+      ...resolved.reasoningEffort === undefined ? {} : { reasoningEffort: resolved.reasoningEffort },
     })
     return selected.selected
   }
@@ -238,11 +266,10 @@ export class AttachManager {
   }
 
   private assertWorkspace(workspace: string): void {
-    if (!isAbsolute(workspace)) throw new Error('workspace must be an absolute path')
-    const roots = this.config.allowedWorkspaceRoots
-    if (roots.length === 0) return
-    const allowed = roots.some(root => workspace === root || workspace.startsWith(`${root}\\`) || workspace.startsWith(`${root}/`))
-    if (!allowed) throw new Error('workspace is outside DSH_MCP_WORKSPACE_ROOTS')
+    if (!isInsideWorkspace(workspace, this.config.allowedWorkspaceRoots)) {
+      if (!isAbsolute(workspace)) throw new Error('workspace must be an absolute path')
+      throw new Error('workspace is outside DSH_MCP_WORKSPACE_ROOTS')
+    }
   }
 
   private serviceSnapshot(workspace: string | null, browserOpened: boolean, browserError: string | null): ServiceSnapshot {
@@ -258,7 +285,7 @@ export class AttachManager {
   }
 
   private publicRun(run: RunRecord): RunSnapshot {
-    const { baselineUpdatedAt: _baseline, sawRunning: _saw, ...rest } = run
+    const { afterSeq: _afterSeq, ...rest } = run
     return rest
   }
 

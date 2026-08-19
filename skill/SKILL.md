@@ -15,7 +15,7 @@ Use this skill after `dsh-relay` is installed in the Web profile. The plugin dia
 Cursor and Codex share this Relay MCP. It attaches to the running Harness Web:
 
 1. Call `doctor` and resolve failed checks.
-2. Call `start_run` with the complete task, an absolute `workspace`, and `model` when the user names one (for example `k3`). Leave `openBrowser` false.
+2. Call `start_run` with the complete task, an absolute `workspace`, and `model` when the user names one. Trailing `max`/`high`/`low` is reasoning effort (`K3 MAX` → `k3`+`max`). Leave `openBrowser` false.
 3. Put a markdown link to `webUrl` in the reply immediately (`http://127.0.0.1:3080/?sessionId=...`). Do not open the OS browser.
 4. Call `wait_run` in intervals of at most 30 seconds. Use `steer_run` for a live correction.
 5. Use `cancel_run` to stop an active turn. Continue a terminal session with `start_run.sessionId`.

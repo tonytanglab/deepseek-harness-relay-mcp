@@ -1,6 +1,6 @@
 {
   "name": "dsh-relay",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Web-profile helper plus an MCP stdio that attaches Codex, Cursor, or Claude Code to an already-running Harness Web",
   "license": "MIT",
   "type": "module",

@@ -10,7 +10,7 @@ export { DEFAULT_WEB_URL }
 export const PACKAGE_NAME = 'dsh-relay'
 
 /** Published helper version. */
-export const PACKAGE_VERSION = '0.1.3'
+export const PACKAGE_VERSION = '0.1.4'
 
 /** Pinned CLI package used in generated MCP launch args. */
 export const DEFAULT_DSH_PACKAGE = '@deepseek-ai/dsh@0.1.0-rc.7'

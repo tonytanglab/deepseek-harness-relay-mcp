@@ -15,7 +15,7 @@
 Cursor 和 Codex 共用这台 Relay MCP。它接到已经在跑的 Harness Web：
 
 1. 调用 `doctor` 并处理失败项。
-2. 调用 `start_run`，传入完整任务、绝对 `workspace`；用户点名模型时再传 `model`（例如 `k3`）。不要设置 `openBrowser`。
+2. 调用 `start_run`，传入完整任务、绝对 `workspace`；用户点名模型时再传 `model`。名称末尾的 `max`/`high`/`low` 是推理等级：`K3 MAX` 表示 `k3`+`max`，`deepseek v4 flash max` 表示 `deepseek-v4-flash`+`max`。不要设置 `openBrowser`。
 3. 立刻用 Markdown 给出 `webUrl` 链接（`http://127.0.0.1:3080/?sessionId=...`）。不要打开系统浏览器。
 4. 以不超过 30 秒的间隔调用 `wait_run`。现场纠正使用 `steer_run`。
 5. 用 `cancel_run` 停止进行中的轮次。已结束的会话用 `start_run.sessionId` 继续。

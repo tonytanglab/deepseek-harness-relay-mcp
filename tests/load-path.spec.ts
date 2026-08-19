@@ -18,7 +18,7 @@ describe('dsh-relay real-load-path guard', () => {
 
   it('does not import MCP stdio transport', async () => {
     const sources = await Promise.all([
-      'index.ts', 'config.ts', 'doctor.ts', 'mcp-config.ts', 'hosts.ts', 'attach.ts', 'harness-rpc.ts', 'models.ts',
+      'index.ts', 'config.ts', 'doctor.ts', 'mcp-config.ts', 'hosts.ts', 'attach.ts', 'harness-rpc.ts', 'models.ts', 'run-state.ts',
     ].map(file => readFile(fileURLToPath(new URL(`../src/${file}`, import.meta.url)), 'utf8')))
     const code = sources.map(source => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')).join('\n')
     expect(code).not.toContain('StdioServerTransport')

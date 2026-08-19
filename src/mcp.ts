@@ -21,13 +21,13 @@ const serviceIdSchema = z.string().uuid().describe('Service identifier returned 
 const server = new McpServer(
   { name: PACKAGE_NAME, version: PACKAGE_VERSION },
   {
-    instructions: 'Attach to the running Harness Web (default http://127.0.0.1:3080). Start one session with start_run, pass model when the user names one (for example k3), return webUrl as a clickable link without opening a browser, wait in intervals of at most 30 seconds, and use steer_run for live correction. Do not spawn dsh --profile codex.',
+    instructions: 'Attach to the running Harness Web (default http://127.0.0.1:3080). Start one session with start_run. A trailing max/high/low on the model name is reasoning effort (K3 MAX means k3 + max; deepseek v4 flash max means deepseek-v4-flash + max), not a different model. Return webUrl as a clickable link without opening a browser. Wait in intervals of at most 30 seconds and read wait_run status/error/text. Do not spawn dsh --profile codex.',
   },
 )
 
 server.registerTool('doctor', {
   title: 'Check the attached Harness Web',
-  description: 'Ping the already-running Harness Web on DSH_WEB_URL without spawning a child process or reading credentials.',
+  description: 'Ping the attached Harness Web and return workspace policy plus the model catalog (ids, names, reasoning efforts).',
   inputSchema: {},
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 }, async () => result(await manager.doctor()))
@@ -70,9 +70,9 @@ server.registerTool('start_run', {
     task: z.string().min(1).describe('Implementation or analysis task for Harness.'),
     workspace: z.string().min(1).describe('Absolute workspace directory.'),
     sessionId: z.string().min(1).optional().describe('Idle session in this workspace to continue.'),
-    model: z.string().min(1).optional().describe('Harness model id or display name, such as k3 or Kimi K3.'),
+    model: z.string().min(1).optional().describe('Harness model id or display name. A trailing max/high/low is reasoning effort: "K3 MAX" is k3+max, "deepseek v4 flash max" is deepseek-v4-flash+max.'),
     provider: z.string().min(1).optional().describe('Harness provider id, such as kimi-coding. Optional when the model id is unique.'),
-    reasoningEffort: z.string().min(1).optional().describe('Optional adapter reasoning effort for the selected model.'),
+    reasoningEffort: z.string().min(1).optional().describe('Reasoning effort (max/high/medium/low). Overrides a trailing effort word in model.'),
     openBrowser: z.boolean().default(false).describe('Open the OS browser. Leave false; return webUrl as a link instead.'),
   },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -90,14 +90,14 @@ server.registerTool('steer_run', {
 
 server.registerTool('get_run', {
   title: 'Read a Harness run',
-  description: 'Return the in-memory snapshot for one Relay run.',
+  description: 'Refresh from the attached Harness Web and return the run snapshot, including last assistant text.',
   inputSchema: { runId: runIdSchema },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-}, guarded(input => Promise.resolve(manager.get(input.runId))))
+}, guarded(input => manager.get(input.runId)))
 
 server.registerTool('wait_run', {
   title: 'Wait for Harness run progress',
-  description: 'Wait for the next run state change or completion for at most 30 seconds.',
+  description: 'Wait until the Harness turn ends or 30 seconds elapse. Terminal snapshots include status, error, and last assistant text.',
   inputSchema: {
     runId: runIdSchema,
     timeoutMs: z.number().int().min(0).max(30_000).default(30_000),
@@ -107,10 +107,10 @@ server.registerTool('wait_run', {
 
 server.registerTool('list_runs', {
   title: 'List Harness runs',
-  description: 'List runs retained by this Relay MCP process.',
+  description: 'Refresh and list runs retained by this Relay MCP process.',
   inputSchema: { serviceId: serviceIdSchema.optional() },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-}, input => result({ runs: manager.list(input.serviceId) }))
+}, guarded(async input => ({ runs: await manager.list(input.serviceId) })))
 
 server.registerTool('cancel_run', {
   title: 'Cancel a Harness run',

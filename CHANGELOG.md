@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.1.4 - 2026-08-19
+
+- `wait_run` / `get_run` / `list_runs` refresh from `session.history` and honor `turn/end` (failed turns stay `failed`, with `error` and last assistant `text`).
+- Do not mark a run succeeded until `turn/end`; idle `session.list` before the turn starts no longer completes early.
+- `cancel_run` only sets cancelled after `session.cancel` succeeds.
+- Workspace roots are resolved so `..` cannot escape `DSH_MCP_WORKSPACE_ROOTS`.
+- `K3 MAX` / `deepseek v4 flash max` select the model plus reasoning effort `max`, not a different model id. `doctor` returns the attached catalog.
+
 ## 0.1.3 - 2026-08-19
 
 - MCP stdio attaches to the already-running Harness Web (`http://127.0.0.1:3080`) so Cursor and Codex share one Relay server. `start_run` can select a model (`k3`, `Kimi K3`) via `session.selectModel` before prompting, and returns `webUrl` as a link without opening a browser. `relay_write_mcp_config` writes Cursor JSON or Codex TOML. The Web plugin still does not own stdin/stdout.

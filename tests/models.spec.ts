@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveCatalogModel } from '../src/models.ts'
+import { parseModelRequest, resolveCatalogModel } from '../src/models.ts'
 
 const groups = [
   {
@@ -31,6 +31,29 @@ describe('resolveCatalogModel', () => {
   it('accepts an explicit provider', () => {
     expect(resolveCatalogModel(groups, { provider: 'kimi-coding', model: 'k3' }))
       .toEqual({ provider: 'kimi-coding', model: 'k3' })
+  })
+
+  it('treats a trailing MAX as reasoning effort, not a different model', () => {
+    expect(parseModelRequest({ model: 'K3 MAX' })).toEqual({ model: 'K3', reasoningEffort: 'max' })
+    expect(parseModelRequest({ model: 'deepseek v4 flash max' })).toEqual({
+      model: 'deepseek v4 flash',
+      reasoningEffort: 'max',
+    })
+    expect(resolveCatalogModel(groups, { model: 'K3 MAX' })).toEqual({
+      provider: 'kimi-coding',
+      model: 'k3',
+      reasoningEffort: 'max',
+    })
+    expect(resolveCatalogModel(groups, { model: 'deepseek v4 flash max' })).toEqual({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-flash',
+      reasoningEffort: 'max',
+    })
+    expect(resolveCatalogModel(groups, { model: 'DeepSeek-V4-Flash', reasoningEffort: 'high' })).toEqual({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-flash',
+      reasoningEffort: 'high',
+    })
   })
 
   it('rejects an unknown model with the catalog', () => {

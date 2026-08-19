@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.2.1
+
+### 2026-08-19 23:51
+
+- 增加 npm 官方安装主路径，中英文 README 统一提供 `dsh plugin --profile web add harness-relay-mcp`、配置检查与 profile 启动命令，并保留 Release tarball 作为离线安装方式。
+- 将版本单一真源提升至 `0.2.1`，用于同步 npm 包版本、GitHub 标签和 GitHub Release，并增加全新隔离 profile 的 npm 安装验证。
+
 ## 0.2.0
 
 ### 2026-08-19 23:30

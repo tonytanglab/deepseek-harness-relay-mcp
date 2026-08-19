@@ -48,12 +48,15 @@ http://127.0.0.1:3080/
 
 ### 安装为 Harness 内部 bundle（推荐）
 
-先构建或下载发布 tarball，然后只通过 Harness 官方 profile 命令安装：
+使用 Harness 官方 profile 命令从 npm 安装已发布包，检查组合后的配置，再启动该 profile：
 
 ```powershell
-dsh plugin --profile web add C:\path\to\harness-relay-mcp.tgz
+dsh plugin --profile web add harness-relay-mcp
 dsh --profile web --dump-config
+dsh --profile web
 ```
+
+离线安装或需要锁定本地文件时，可下载 Release tarball，并将第一条命令中的 `harness-relay-mcp` 替换为本地 `.tgz` 路径。
 
 配置输出应包含 `id: harness-relay-mcp` 和 `name: 'harness-relay-mcp'`。因此 Harness 插件列表显示为无斜杆的 `harness-relay-mcp`。如果 `dsh web` 已在运行，安装或升级后需要重启该 Host 才会加载新 bundle。启动后，bundle 会继续在兼容路径 `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json` 发布不含密钥的端点描述；Bearer token 单独保存在 Host 专属状态目录。
 

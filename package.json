@@ -1,88 +1,122 @@
 {
-  "name": "dsh-agents-relay",
-  "version": "0.1.5",
-  "description": "Web-profile helper plus an MCP stdio that attaches Codex, Cursor, or Claude Code to an already-running Harness Web",
-  "license": "MIT",
-  "type": "module",
-  "main": "lib/index.js",
-  "files": [
-    "lib",
-    "cordis.patch.yml",
-    "pnpm-workspace.yaml",
-    "skill",
-    "prepare.mjs"
-  ],
-  "exports": {
-    ".": "./lib/index.js",
-    "./mcp": "./lib/mcp.js",
-    "./cordis.patch.yml": "./cordis.patch.yml",
-    "./package.json": "./package.json"
-  },
-  "bin": {
-    "dsh-relay-mcp": "./lib/mcp.js"
-  },
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
-  },
+  "name": "harness-relay-mcp",
+  "version": "0.2.0",
+  "description": "Delegate and monitor DeepSeek Harness work from any MCP agent.",
+  "author": "TonyTangLab",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tonytanglab/deepseek-harness-relay-mcp.git"
   },
+  "homepage": "https://github.com/tonytanglab/deepseek-harness-relay-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/tonytanglab/deepseek-harness-relay-mcp/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "mcp",
+    "agent",
+    "delegation",
+    "monitoring"
+  ],
+  "type": "module",
+  "main": "./dist/dsh-relay-harness.mjs",
+  "exports": {
+    ".": {
+      "types": "./dist/types/harness-entry.d.ts",
+      "default": "./dist/dsh-relay-harness.mjs"
+    },
+    "./harness": {
+      "types": "./dist/types/harness-entry.d.ts",
+      "default": "./dist/dsh-relay-harness.mjs"
+    },
+    "./standalone": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/dsh-relay.mjs"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "harness-relay-mcp": "./dist/dsh-relay.mjs",
+    "harness-relay-mcp-proxy": "./dist/dsh-relay-proxy.mjs",
+    "dsh-relay": "./dist/dsh-relay.mjs",
+    "dsh-relay-proxy": "./dist/dsh-relay-proxy.mjs"
+  },
+  "files": [
+    ".codex-plugin/plugin.json",
+    ".mcp.json",
+    "dist/dsh-relay.mjs",
+    "dist/dsh-relay.mjs.map",
+    "dist/dsh-relay-proxy.mjs",
+    "dist/dsh-relay-proxy.mjs.map",
+    "dist/dsh-relay-harness.mjs",
+    "dist/dsh-relay-harness.mjs.map",
+    "dist/types/",
+    "cordis.patch.yml",
+    "skills/",
+    "README.md",
+    "README.zh-CN.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "version.json"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
   "scripts": {
-    "build": "tsdown",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "prepare": "node prepare.mjs",
-    "prepack": "tsdown"
+    "build": "node ./scripts/sync-version.mjs && tsc --noEmit && node ./scripts/build.mjs",
+    "check:version": "node ./scripts/sync-version.mjs --check",
+    "prepack": "node ./scripts/sync-version.mjs && tsc --noEmit && node ./scripts/build.mjs && node ./scripts/validate-package-files.mjs",
+    "pretest": "node ./scripts/sync-version.mjs --check",
+    "test": "tsx --test ./tests/*.test.ts",
+    "test:mcp": "node ./scripts/sync-version.mjs && tsc --noEmit && node ./scripts/build.mjs && node ./scripts/mcp-smoke.mjs",
+    "check:package": "node ./scripts/validate-package-files.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0-0 || >=4.0.1-rc.1 <5.0.0-0",
-    "@deepseek-ai/dsh-commands": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0-0",
-    "@deepseek-ai/dsh-tools": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0-0",
-    "@deepseek-ai/schemastery": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0-0 || >=3.18.1-rc.1 <4.0.0-0"
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-host-apiproxy": ">=0.1.0-rc.7 <0.2.0",
+    "@deepseek-ai/dsh-host-webserver": ">=0.1.0-rc.7 <0.2.0",
+    "@deepseek-ai/dsh-permission-presets": ">=0.1.0-rc.7 <0.2.0",
+    "@deepseek-ai/dsh-session": ">=0.1.0-rc.7 <0.2.0",
+    "@deepseek-ai/schemastery": "^3.18.1"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
       "optional": true
     },
-    "@deepseek-ai/dsh-commands": {
+    "@deepseek-ai/dsh-host-apiproxy": {
       "optional": true
     },
-    "@deepseek-ai/dsh-tools": {
+    "@deepseek-ai/dsh-host-webserver": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-permission-presets": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-session": {
       "optional": true
     },
     "@deepseek-ai/schemastery": {
       "optional": true
     }
   },
-  "devDependencies": {
-    "@types/node": "22.20.0",
-    "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/cordis-plugin-loader": "1.0.2",
-    "@deepseek-ai/dsh-agent": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-attachment": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-brand": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-code-runtime": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-commands": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-invariants": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-llm": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-scope": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-session": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-system-prompt": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-timeout": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-tools": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-user-approval": "0.1.0-rc.7",
-    "node-addon-require-builtin": "^0.1.4",
-    "@deepseek-ai/schemastery": "3.18.1",
-    "tsdown": "^0.22.2",
-    "typescript": "6.0.3",
-    "vitest": "^4.1.11"
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
   },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "zod": "^4.0.0"
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
   }
 }

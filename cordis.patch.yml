@@ -1,11 +1,5 @@
-# Web-profile helper. It must not mount @deepseek-ai/dsh-mcp-codex: that plugin
-# owns process stdin/stdout as MCP stdio and would break the Web UI.
+# Tree-external Harness Relay MCP bundle layer. This inserts one row and does not
+# replace any Harness product row or configuration.
 - insert:
-    - id: dsh-agents-relay
-      name: dsh-agents-relay
-      config:
-        mcpServerName: dsh-relay
-        allowedWorkspaceRoots: []
-        dshPackage: '@deepseek-ai/dsh@0.1.0-rc.7'
-        host: codex
-        webUrl: http://127.0.0.1:3080
+    - id: harness-relay-mcp
+      name: 'harness-relay-mcp'

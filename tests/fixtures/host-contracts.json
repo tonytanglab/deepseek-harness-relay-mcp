@@ -1,0 +1,20 @@
+{
+  "acceptedPrompt": {
+    "accepted": true,
+    "messageId": "message-golden"
+  },
+  "definitiveRejection": {
+    "code": "INVALID_ARGUMENT",
+    "message": "invalid request"
+  },
+  "retryableFailure": {
+    "code": "HOST_UNAVAILABLE",
+    "message": "try again"
+  },
+  "unknownOutcome": {
+    "rpcId": "different-rpc-id",
+    "value": {
+      "accepted": true
+    }
+  }
+}

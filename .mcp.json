@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "harness-relay-mcp": {
+      "command": "node",
+      "args": ["./dist/dsh-relay-proxy.mjs"],
+      "cwd": "."
+    }
+  }
+}

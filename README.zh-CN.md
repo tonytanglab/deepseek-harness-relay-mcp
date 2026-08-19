@@ -18,6 +18,40 @@ MCP Agent
    └─ 持久结果 + 原生 Harness Web 会话链接
 ```
 
+## 定位：Harness 控制平面，而不是模型包装器
+
+Harness Relay MCP 是独立的第三方项目，并非由 DeepSeek AI 开发、背书或提供支持。
+
+> **这不是 DeepSeek 模型包装器，而是 DeepSeek Harness 的 MCP 控制平面。**
+
+请区分三种完全不同的接入方向：
+
+- DeepSeek Harness 官方仓库当前记录的是 [`mcp-client`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/README.md)，用途是让 Harness 消费外部 MCP Server；这与把 Harness 暴露为可由 MCP 控制的工作 Agent 方向相反。
+- 简单 DeepSeek MCP Server 直接调用模型 API 并返回模型输出，不会进入 Harness 原生会话、插件、工作区、权限和事件生命周期。
+- Harness Relay MCP 连接现有的官方 Harness Host，把该 Host 的原生能力提供给外部 MCP Agent。
+
+截至 2026-08-20，官方 [`dsh` 启动器源码](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/cli/src/args.ts)只提供 profile 启动和插件管理，没有记录可对外控制 Harness 的 `dsh mcp` Server 命令。DeepSeek Harness 仍处于开发者预览阶段，依赖本对比前应重新核对官方仓库。
+
+**对比核验日期：2026-08-20。**
+
+| 能力 | 当前官方 Harness | 简单 DeepSeek MCP | Harness Relay MCP |
+|---|---|---|---|
+| 主要方向 | Harness 消费 MCP 工具 | MCP 客户端调用 DeepSeek 模型 | MCP 客户端控制运行中的 Harness Host |
+| 原生 Harness 会话和事件 | 内部原生存在，但没有通过文档化 MCP Server 对外提供 | 不支持 | 支持 |
+| Harness 插件、工具和沙箱 | Harness 内部原生能力 | 不支持 | 由 Harness 原生执行 |
+| Provider/模型/推理强度/preset | Harness UI 和 API 内可用 | 通常只有少量固定模型参数 | 从 Host 发现并选择 |
+| 原生权限 preset | Harness 内部行为 | 没有工作区权限体系 | `read-only`、`workspace-write`、`danger-full-access` |
+| 长任务生命周期 | 在 Harness 内操作 | 通常一次请求返回一次结果 | 启动、查询、等待、纠偏、回复、取消、重新打开 |
+| 持久监控和恢复 | Harness 保存会话历史 | 通常没有 | Relay 运行标识、幂等、对账和重启恢复 |
+| Harness Web 会话链接 | 原生 UI | 没有 | 返回并可验证 |
+| 安装与维护 | 只使用 Harness 时最低 | MCP 方案中最简单 | 组件更多，需要持续适配 Harness |
+
+### 如何选择
+
+- 只需要分类、提取、总结或快速第二意见，而且模型文本输出已经足够时，使用简单 DeepSeek MCP Server。
+- 任务必须在 DeepSeek Harness 内运行，并需要已登记工作区、工具、插件、Provider 目录、原生权限、持久会话、长任务监控、故障恢复或 Web 查看时，使用 Harness Relay MCP。
+- 不要仅为替代一次普通 Chat Completions 请求而安装 Relay；额外的 Host、状态、认证和 proxy 层不会在这种场景中产生足够的控制面价值。
+
 ## 主要能力
 
 - 使用 Harness 原生会话和持久事件，不解析 CLI 输出。
@@ -320,6 +354,7 @@ HTTP 200 只能证明 Host 已响应，不能证明超长实时对话已经完�
 - 未配置显式 roots 时，以 Harness 工作区注册表作为路由授权真源；配置 roots 后仍执行更严格的本地边界。
 - `stop_service` 不会停止 Harness，也不会删除会话。
 - Harness 输出属于证据；最终复核和高风险决策仍由调用方 Agent 负责。
+- Relay 无法保证 Codex 或其他 MCP 客户端是否请求批准或触发 auto-review；这仍由客户端、客户端策略和具体操作共同决定。
 
 ## 与 Harness 插件标准的边界
 

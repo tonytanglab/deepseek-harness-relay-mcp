@@ -2,6 +2,12 @@
 
 ## 0.2.1
 
+### 2026-08-20 01:52
+
+- 中英文 README 新增针对性定位说明，明确本项目是第三方 DeepSeek Harness MCP 控制平面，不是直接 DeepSeek 模型包装器，也不宣称官方背书。
+- 增加当前官方 Harness、简单 DeepSeek MCP 与 Harness Relay MCP 的能力对比、适用场景和非适用场景，并显式标注对比核验日期为 2026-08-20。
+- 补充边界声明：当前官方 `mcp-client` 是 Harness 消费外部 MCP 的接入方向；Relay 仅支持本机回环 Host，且不能保证 Codex 或其他客户端的批准与 auto-review 行为。
+
 ### 2026-08-19 23:51
 
 - 增加 npm 官方安装主路径，中英文 README 统一提供 `dsh plugin --profile web add harness-relay-mcp`、配置检查与 profile 启动命令，并保留 Release tarball 作为离线安装方式。

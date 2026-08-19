@@ -18,6 +18,40 @@ MCP agent
    └─ durable result + native Harness Web session URL
 ```
 
+## Positioning: Harness control plane, not a model wrapper
+
+Harness Relay MCP is an independent third-party project. It is not developed, endorsed, or supported by DeepSeek AI.
+
+> **This is not a DeepSeek model wrapper. It is the MCP control plane for DeepSeek Harness.**
+
+Do not confuse three different integration directions:
+
+- The official DeepSeek Harness repository currently documents [`mcp-client`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/README.md), which lets Harness consume external MCP servers. It is the opposite direction from exposing Harness as an MCP-controlled worker.
+- Direct DeepSeek MCP servers call a model API and return model output. They do not enter the native Harness session, plugin, workspace, permission, or event lifecycle.
+- Harness Relay MCP attaches to an existing official Harness Host and exposes that Host's native capabilities to external MCP agents.
+
+As of 2026-08-20, the official [`dsh` launcher source](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/cli/src/args.ts) provides profile boot and plugin management but no documented outbound `dsh mcp` server command. DeepSeek Harness is a developer preview, so re-check the official repository before relying on this comparison.
+
+**Comparison last verified: 2026-08-20.**
+
+| Capability | Official Harness today | Direct DeepSeek MCP | Harness Relay MCP |
+|---|---|---|---|
+| Primary direction | Harness consumes MCP tools | MCP client calls a DeepSeek model | MCP client controls a running Harness Host |
+| Native Harness sessions/events | Native internally, not exported by a documented MCP server | No | Yes |
+| Harness plugins, tools, and sandbox | Native internally | No | Executed by Harness |
+| Provider/model/reasoning/preset selection | Available in Harness UI and APIs | Usually a small fixed model surface | Discovered from and selected through the Host |
+| Native permission presets | Internal Harness behavior | No workspace permission model | `read-only`, `workspace-write`, `danger-full-access` |
+| Long-running lifecycle | Operated inside Harness | Usually one request/response | Start, status, wait, steer, reply, cancel, reopen |
+| Durable monitoring and recovery | Harness-owned session history | Usually none | Relay identities, idempotency, reconciliation, and restart recovery |
+| Harness Web session link | Native UI | No | Returned and verifiable |
+| Setup and maintenance | Lowest when using Harness directly | Simplest MCP option | More components and ongoing Harness compatibility work |
+
+### Choose the right tool
+
+- Use a direct DeepSeek MCP server for bounded classification, extraction, summarization, or a quick second opinion where plain model output is enough.
+- Use Harness Relay MCP when the task must run inside DeepSeek Harness and needs its registered workspaces, tools, plugins, provider catalog, native permissions, persistent sessions, long-running monitoring, recovery, or Web inspection.
+- Do not install Relay only to replace one ordinary chat-completions request; the additional Host, state, authentication, and proxy layers would add complexity without providing useful control-plane value.
+
 ## Highlights
 
 - Native Harness sessions and durable events instead of CLI output parsing.
@@ -320,6 +354,7 @@ Only loopback HTTP Hosts are accepted. Workspace paths are resolved through the 
 - Without explicit roots, the Harness workspace registry is the routing authority; configured roots remain a stricter local boundary when present.
 - `stop_service` never stops Harness or deletes a session.
 - Harness findings are evidence; the calling agent remains responsible for final verification and high-stakes decisions.
+- Relay cannot guarantee whether Codex or another MCP client will request approval or run auto-review; those decisions remain governed by the client, its policy, and the requested operation.
 
 ## Standards boundary
 

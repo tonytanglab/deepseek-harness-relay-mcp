@@ -10,7 +10,7 @@ describe('inspectRuntime', () => {
     const config = resolveConfig({
       mcpServerName: 'dsh-relay',
       allowedWorkspaceRoots: [],
-      dshPackage: '@deepseek-ai/dsh@0.1.0-rc.5',
+      dshPackage: '@deepseek-ai/dsh@0.1.0-rc.7',
       host: 'codex',
     }, { DSH_HOME: await mkdtemp(join(tmpdir(), 'dsh-relay-doctor-')) })
     const relative = await inspectRuntime(config, 'dsh', process.execPath, process.version)
@@ -18,7 +18,7 @@ describe('inspectRuntime', () => {
     expect(relative.launcher.direct).toBe(false)
     expect(relative.launcher.exists).toBe(false)
     expect(relative.launcher.shell).toBe(false)
-    expect(relative.package).toEqual({ name: 'dsh-relay', version: '0.1.0' })
+    expect(relative.package).toEqual({ name: 'dsh-relay', version: '0.1.2' })
 
     const missing = await inspectRuntime(config, join(config.dataDirectory, 'missing-entry.js'), process.execPath, process.version)
     expect(missing.launcher.direct).toBe(true)
@@ -34,7 +34,7 @@ describe('inspectRuntime', () => {
       mcpServerName: 'dsh-relay',
       allowedWorkspaceRoots: [home],
       credentialsPath,
-      dshPackage: '@deepseek-ai/dsh@0.1.0-rc.5',
+      dshPackage: '@deepseek-ai/dsh@0.1.0-rc.7',
       host: 'codex',
     }, { DSH_HOME: home })
     const report = await inspectRuntime(config, process.execPath, process.execPath, 'v22.0.0')

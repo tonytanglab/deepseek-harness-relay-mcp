@@ -63,7 +63,7 @@ describe('dsh-relay plugin', () => {
     const written = JSON.parse(await readFile(path, 'utf8')) as { mcpServers: { 'dsh-relay': { args: string[] } } }
     expect(written.mcpServers['dsh-relay'].args).toEqual([
       '--yes',
-      '--package=@deepseek-ai/dsh@0.1.0-rc.5',
+      '--package=@deepseek-ai/dsh@0.1.0-rc.7',
       '--',
       'dsh',
       '--profile',

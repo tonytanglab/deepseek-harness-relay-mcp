@@ -8,10 +8,10 @@ import type { McpHost } from './hosts.ts'
 export const PACKAGE_NAME = 'dsh-relay'
 
 /** Published helper version. */
-export const PACKAGE_VERSION = '0.1.0'
+export const PACKAGE_VERSION = '0.1.2'
 
 /** Pinned CLI package used in generated MCP launch args. */
-export const DEFAULT_DSH_PACKAGE = '@deepseek-ai/dsh@0.1.0-rc.5'
+export const DEFAULT_DSH_PACKAGE = '@deepseek-ai/dsh@0.1.0-rc.7'
 
 /** Default MCP server key written into host config documents. */
 export const DEFAULT_MCP_SERVER_NAME = 'dsh-relay'

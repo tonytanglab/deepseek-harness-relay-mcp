@@ -1,0 +1,6 @@
+packages:
+  - .
+
+# Harness owns these runtime APIs. Installing them into this external bundle
+# would pull private/unpublished implementation dependencies.
+autoInstallPeers: false

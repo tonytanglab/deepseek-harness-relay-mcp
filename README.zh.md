@@ -12,6 +12,16 @@ dsh plugin --profile web add github:tonytanglab/deepseek-harness-relay-mcp
 
 或安装 GitHub Release 的预构建 tarball。安装后重启 `dsh web`，然后运行 `/relay-setup`，或让 agent 调用 `relay_doctor` 与 `relay_write_mcp_config`。
 
+若从本地检出目录安装，请先构建，因为 pnpm 链接本地目录时不会运行 `prepare`：
+
+```sh
+pnpm install
+pnpm run build
+dsh plugin --profile web add file:/absolute/path/to/deepseek-harness-relay-mcp
+```
+
+插件同时接受早期预发布 Cordis/Schemastery 包版本，以及当前 Harness 使用的 `@deepseek-ai/cordis` 4.x 与 `@deepseek-ai/schemastery` 3.x 版本线。这些 peer API 由 Harness profile 提供，并在安装阶段标记为 optional。仓库关闭了 pnpm 的 peer 自动安装，因此构建插件时不会尝试获取 Harness 尚未独立发布的传递包。
+
 ## 做什么
 
 `apply` 在 Web profile 上注册一条斜杠命令和两个工具：
@@ -20,7 +30,7 @@ dsh plugin --profile web add github:tonytanglab/deepseek-harness-relay-mcp
 - `relay_doctor` 检查 `process.argv[1]` 是否为绝对且存在的 dsh 入口、`process.execPath` 是否存在、凭证路径是否存在；不读取凭证内容，也不启动 MCP stdio。
 - `relay_write_mcp_config` 按 [Codex 指南](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/codex.md) 生成 npx 启动块。当 `path` 是绝对 JSON 文件时写入，并合并 `mcpServers` 以保留其他服务器。
 
-生成的命令是 `npx --yes --package=@deepseek-ai/dsh@0.1.0-rc.5 -- dsh --profile codex`。本插件从不使用 `npx.cmd` 或 `shell: true`，也从不导入 `StdioServerTransport`。
+生成的命令是 `npx --yes --package=@deepseek-ai/dsh@0.1.0-rc.7 -- dsh --profile codex`。本插件从不使用 `npx.cmd` 或 `shell: true`，也从不导入 `StdioServerTransport`。
 
 ## 配置
 
@@ -31,7 +41,7 @@ dsh plugin --profile web add github:tonytanglab/deepseek-harness-relay-mcp
 | `allowedWorkspaceRoots` | `[]` | 空则读取 `DSH_MCP_WORKSPACE_ROOTS` |
 | `credentialsPath` | `$DSH_HOME/.credentials.yaml` | 共享凭证文档；也可用 `DSH_MCP_CREDENTIALS_PATH` |
 | `dataDirectory` | `$DSH_HOME/codex-services` | Codex 服务主目录；也可用 `DSH_MCP_DATA_DIR` |
-| `dshPackage` | `@deepseek-ai/dsh@0.1.0-rc.5` | 生成 npx 参数时钉死的包 |
+| `dshPackage` | `@deepseek-ai/dsh@0.1.0-rc.7` | 生成 npx 参数时钉死的包 |
 | `host` | `codex` | `/relay-setup` 写入的默认宿主：`codex`、`cursor` 或 `claude-code` |
 
 用户可在 profile 的 `cordis.patch.yml` 中覆盖这些行。无效配置会在插件加载时失败。
@@ -73,4 +83,4 @@ dsh plugin --profile web add github:tonytanglab/deepseek-harness-relay-mcp
 ## Known Limitations and Deferred Work
 
 - **进程内没有 MCP stdio** — 把本 bundle 装进 web profile 不会露出 Codex 的十一个 MCP 工具。那些工具仍在 `dsh --profile codex`。
-- **没有 Settings UI** — v0.1.0 没有 `dsh.client` 表单；配置路径是 `/relay-setup` 和这两个工具。
+- **没有 Settings UI** — v0.1.x 没有 `dsh.client` 表单；配置路径是 `/relay-setup` 和这两个工具。

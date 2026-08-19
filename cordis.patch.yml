@@ -6,5 +6,5 @@
       config:
         mcpServerName: dsh-relay
         allowedWorkspaceRoots: []
-        dshPackage: '@deepseek-ai/dsh@0.1.0-rc.5'
+        dshPackage: '@deepseek-ai/dsh@0.1.0-rc.7'
         host: codex

@@ -4,7 +4,7 @@
  * in this process.
  *
  * Namespace plugin (named exports, no default export).
- * @module dsh-relay
+ * @module dsh-agents-relay
  */
 
 import { isAbsolute } from 'node:path'
@@ -25,8 +25,8 @@ import { inspectRuntime, type DoctorReport } from './doctor.ts'
 import { MCP_HOSTS, parseMcpHost, type McpHost } from './hosts.ts'
 import { buildMcpLaunch, writeMcpConfigFile, type McpServerLaunch } from './mcp-config.ts'
 
-/** Stable Cordis plugin name. */
-export const name = 'relay'
+/** Cordis plugin id. The Web list shows `agents-relay` because it strips the `dsh-` package prefix. */
+export const name = 'dsh-agents-relay'
 
 /** Command and tool registries required before apply. */
 export const inject = ['commands', 'tools']

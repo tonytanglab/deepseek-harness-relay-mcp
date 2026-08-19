@@ -114,7 +114,7 @@ server.registerTool('list_runs', {
 
 server.registerTool('cancel_run', {
   title: 'Cancel a Harness run',
-  description: 'Request cancellation of the Harness session behind one Relay run.',
+  description: 'Request cancellation of the Harness session behind one Relay run, then wait up to 10 seconds for the turn to settle. Idempotent: a terminal run returns its snapshot unchanged. If the turn is still alive after the wait, the snapshot stays running with cancelRequested true.',
   inputSchema: { runId: runIdSchema },
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
 }, guarded(input => manager.cancel(input.runId)))

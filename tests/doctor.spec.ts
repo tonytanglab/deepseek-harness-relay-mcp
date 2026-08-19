@@ -18,7 +18,7 @@ describe('inspectRuntime', () => {
     expect(relative.launcher.direct).toBe(false)
     expect(relative.launcher.exists).toBe(false)
     expect(relative.launcher.shell).toBe(false)
-    expect(relative.package).toEqual({ name: 'dsh-relay', version: '0.1.4' })
+    expect(relative.package).toEqual({ name: 'dsh-agents-relay', version: '0.1.5' })
 
     const missing = await inspectRuntime(config, join(config.dataDirectory, 'missing-entry.js'), process.execPath, process.version)
     expect(missing.launcher.direct).toBe(true)

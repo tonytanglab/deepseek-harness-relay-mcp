@@ -1,8 +1,8 @@
-# dsh-relay
+# dsh-agents-relay
 
 [English](README.md) | 中文
 
-Web profile 辅助插件：写入 MCP 配置，让 **Cursor、Codex 或 Claude Code** 接到已经在跑的 Harness Web（默认 `http://127.0.0.1:3080`）。它不会在 Web 进程内运行 MCP stdio，也不会再拉起 `dsh --profile codex`。
+Web profile 辅助插件：写入 MCP 配置，让 **Cursor、Codex 或 Claude Code** 接到已经在跑的 Harness Web（默认 `http://127.0.0.1:3080`）。它不会在 Web 进程内运行 MCP stdio，也不会再拉起 `dsh --profile codex`。包名/插件 id 为 **dsh-agents-relay**（列表卡片标题是 **agents-relay**，因为 Harness 会去掉 `dsh-` 前缀）。
 
 安装到 profile：
 

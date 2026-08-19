@@ -33,9 +33,40 @@ describe('inspectTurn', () => {
     expect(inspectTurn(events, 3, false)).toEqual({
       ended: true,
       status: 'failed',
-      error: '429 overloaded',
+      error: 'RATE_LIMIT: 429 overloaded',
       text: 'partial',
     })
+  })
+
+  it('maps a user abort to cancelled and a non-user abort to failed', () => {
+    const userStop = unwrapHistory({
+      events: [{ type: 'turn/end', seq: 5, data: { reason: { kind: 'aborted', reason: { kind: 'user' } } } }],
+    })
+    expect(inspectTurn(userStop, 0, false)).toMatchObject({ ended: true, status: 'cancelled', error: null })
+    const legacy = unwrapHistory({
+      events: [{ type: 'turn/end', seq: 5, data: { reason: { kind: 'aborted', reason: { kind: 'legacy' } } } }],
+    })
+    expect(inspectTurn(legacy, 0, false)).toMatchObject({ ended: true, status: 'failed', error: 'turn aborted: legacy' })
+    // A Relay-requested cancellation wins even over a non-user abort kind.
+    expect(inspectTurn(legacy, 0, true)).toMatchObject({ ended: true, status: 'cancelled' })
+  })
+
+  it('maps blocked, interrupted, and max-tokens to failed instead of succeeded', () => {
+    for (const [kind, error] of [
+      ['blocked', 'turn blocked'],
+      ['interrupted', 'turn interrupted'],
+      ['max-tokens', 'turn reached the output-token limit'],
+    ] as const) {
+      const events = unwrapHistory({ events: [{ type: 'turn/end', seq: 5, data: { reason: { kind } } }] })
+      expect(inspectTurn(events, 0, false)).toMatchObject({ ended: true, status: 'failed', error })
+    }
+  })
+
+  it('reports an unknown turn end kind as failed', () => {
+    const events = unwrapHistory({ events: [{ type: 'turn/end', seq: 5, data: { reason: { kind: 'mystery' } } }] })
+    const outcome = inspectTurn(events, 0, false)
+    expect(outcome.status).toBe('failed')
+    expect(outcome.error).toContain('unknown turn end')
   })
 
   it('ignores turn/end from earlier turns', () => {

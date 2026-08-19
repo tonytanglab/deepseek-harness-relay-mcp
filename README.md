@@ -1,8 +1,8 @@
-# dsh-relay
+# dsh-agents-relay
 
 English | [中文](README.zh.md)
 
-Web-profile helper that writes MCP config so **Cursor, Codex, or Claude Code** can attach to an already-running Harness Web (`http://127.0.0.1:3080` by default). It does not run the MCP stdio server in the Web process, and it does not spawn `dsh --profile codex`.
+Web-profile helper that writes MCP config so **Cursor, Codex, or Claude Code** can attach to an already-running Harness Web (`http://127.0.0.1:3080` by default). It does not run the MCP stdio server in the Web process, and it does not spawn `dsh --profile codex`. In the Web plugin list the package is **dsh-agents-relay** (card title **agents-relay**, because Harness strips the `dsh-` prefix).
 
 Install into a profile:
 

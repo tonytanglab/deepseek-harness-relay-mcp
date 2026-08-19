@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.1.5 - 2026-08-19
+
+- [2026-08-19 17:29] 修复同一 Harness 会话并发启动时的占用竞态，初始化失败时仅释放当前运行持有的占位。
+- [2026-08-19 17:29] 修复取消 RPC 失败后仍残留 `cancelRequested` 的误分类问题，并让 `wait_run` / `cancel_run` 的内部 RPC 与轮询共同服从截止时间。
+- [2026-08-19 17:29] 恢复 `RunSnapshot.finishedAt` 类型，新增 TypeScript 类型检查命令及并发、取消失败、超时预算回归测试；完整依赖安装与全量验证按用户要求留待后续环境继续。
+- Web plugin id/package is `dsh-agents-relay` (list title `agents-relay` after Harness strips `dsh-`). The MCP server key stays `dsh-relay`.
+- `turn/end` reasons follow the wire protocol (`completed` / `aborted` / `error` / `blocked` / `interrupted` / `max-tokens`): a user stop reports `cancelled`, and blocked / interrupted / max-tokens turns report `failed` instead of `succeeded`.
+- `start_run` refuses a session that already has an active Relay run, verifies a reused session belongs to the given workspace, and rejects subagent sessions.
+- `cancel_run` is idempotent for terminal runs and waits up to 10 seconds for the cancelled turn to settle instead of claiming `cancelled` immediately.
+- `wait_run` / `get_run` / `list_runs` survive transient Harness Web errors: transport failures surface as `lastRefreshError` on the snapshot and no longer abort the wait.
+- The test suite is runnable in this repository (`pnpm test`, vitest + pinned Harness packages); `package.json` is unified at `dsh-agents-relay@0.1.5`.
+
 ## 0.1.4 - 2026-08-19
 
 - `wait_run` / `get_run` / `list_runs` refresh from `session.history` and honor `turn/end` (failed turns stay `failed`, with `error` and last assistant `text`).

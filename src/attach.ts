@@ -9,6 +9,9 @@ import { inspectTurn, isInsideWorkspace, maxEventSeq, unwrapHistory, type Histor
 
 const execFileAsync = promisify(execFile)
 
+/** Bounded wait for a cancelled turn to reach a terminal state. */
+const CANCEL_CONVERGENCE_MS = 10_000
+
 export interface AttachConfig {
   webUrl: string
   allowedWorkspaceRoots: string[]
@@ -29,6 +32,8 @@ export interface RunSnapshot {
   startedAt: string
   finishedAt: string | null
   error: string | null
+  /** Last transport failure seen while polling; null when the last refresh succeeded. */
+  lastRefreshError: string | null
 }
 
 export interface ServiceSnapshot {
@@ -51,6 +56,8 @@ interface RunRecord extends RunSnapshot {
 export class AttachManager {
   readonly serviceId = crypto.randomUUID()
   private readonly runs = new Map<string, RunRecord>()
+  /** sessionId → runId reservation so two Relay runs never share one Harness session. */
+  private readonly activeSessions = new Map<string, string>()
 
   constructor(private readonly config: AttachConfig) {}
 
@@ -128,47 +135,65 @@ export class AttachManager {
     } else {
       const summary = listed.items.find(item => item.sessionId === sessionId)
       if (summary === undefined) throw new Error(`unknown sessionId: ${sessionId}`)
+      if (!createdWs.workspace.sessionIds.includes(sessionId)) {
+        throw new Error(`unknown sessionId for this workspace: ${sessionId}`)
+      }
+      if (summary.origin === 'subagent') throw new Error(`session is a subagent session: ${sessionId}`)
       if (summary.running) throw new Error(`Harness session is still running: ${sessionId}`)
       sessionReused = true
     }
-    const model = await this.selectModel(sessionId, input)
-    const prior = await callHarness<HistoryPage>(this.config.webUrl, 'session.history', {
-      sessionId,
-      maxMessages: 20,
-    })
-    const afterSeq = maxEventSeq(unwrapHistory(prior))
-    await callHarness(this.config.webUrl, 'session.prompt', {
-      sessionId,
-      mode: 'queue',
-      content: [{ type: 'text', text: task }],
-    })
     const runId = crypto.randomUUID()
-    const record: RunRecord = {
-      runId,
-      serviceId: this.serviceId,
-      sessionId,
-      sessionReused,
-      task,
-      workspace: input.workspace,
-      webUrl: sessionUrl(this.config.webUrl, sessionId),
-      model,
-      text: null,
-      status: 'running',
-      cancelRequested: false,
-      startedAt: new Date().toISOString(),
-      finishedAt: null,
-      error: null,
-      afterSeq,
+    if (this.activeSessions.has(sessionId)) {
+      throw new Error(`Harness session already has an active Relay run: ${sessionId}`)
     }
-    this.runs.set(runId, record)
-    if (input.openBrowser === true) {
-      try {
-        await this.openUrl(record.webUrl)
-      } catch (error) {
-        void error
+    // Reserve synchronously before any more awaits so concurrent starts cannot
+    // both pass the active-session check.
+    this.activeSessions.set(sessionId, runId)
+    try {
+      const model = await this.selectModel(sessionId, input)
+      const prior = await callHarness<HistoryPage>(this.config.webUrl, 'session.history', {
+        sessionId,
+        maxMessages: 20,
+      })
+      const afterSeq = maxEventSeq(unwrapHistory(prior))
+      await callHarness(this.config.webUrl, 'session.prompt', {
+        sessionId,
+        mode: 'queue',
+        content: [{ type: 'text', text: task }],
+      })
+      const record: RunRecord = {
+        runId,
+        serviceId: this.serviceId,
+        sessionId,
+        sessionReused,
+        task,
+        workspace: input.workspace,
+        webUrl: sessionUrl(this.config.webUrl, sessionId),
+        model,
+        text: null,
+        status: 'running',
+        cancelRequested: false,
+        startedAt: new Date().toISOString(),
+        finishedAt: null,
+        error: null,
+        lastRefreshError: null,
+        afterSeq,
       }
+      this.runs.set(runId, record)
+      if (input.openBrowser === true) {
+        try {
+          await this.openUrl(record.webUrl)
+        } catch (error) {
+          void error
+        }
+      }
+      return this.publicRun(record)
+    } catch (error) {
+      if (this.activeSessions.get(sessionId) === runId) {
+        this.activeSessions.delete(sessionId)
+      }
+      throw error
     }
-    return this.publicRun(record)
   }
 
   async steer(runId: string, task: string): Promise<{ runId: string; accepted: true }> {
@@ -192,9 +217,9 @@ export class AttachManager {
     const run = this.requireRun(runId)
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline && run.status === 'running') {
-      await this.refresh(run)
+      await this.refresh(run, deadline)
       if (run.status !== 'running') break
-      await delay(500)
+      await delay(Math.min(500, Math.max(0, deadline - Date.now())))
     }
     return this.publicRun(run)
   }
@@ -208,39 +233,76 @@ export class AttachManager {
 
   async cancel(runId: string): Promise<RunSnapshot> {
     const run = this.requireRun(runId)
-    if (run.status !== 'running') throw new Error(`run is not active: ${runId}`)
-    await callHarness(this.config.webUrl, 'session.cancel', { sessionId: run.sessionId })
+    // Idempotent: a terminal run just returns its snapshot.
+    if (run.status !== 'running') return this.publicRun(run)
+    const deadline = Date.now() + CANCEL_CONVERGENCE_MS
+    await callHarness(
+      this.config.webUrl,
+      'session.cancel',
+      { sessionId: run.sessionId },
+      { timeoutMs: remainingMs(deadline) },
+    )
     run.cancelRequested = true
-    await this.refresh(run)
-    if (run.status === 'running') {
-      run.status = 'cancelled'
-      run.finishedAt = new Date().toISOString()
+    // Converge on the real turn/end instead of claiming cancelled immediately:
+    // if Harness keeps the turn alive, the snapshot honestly stays `running`
+    // with `cancelRequested: true`.
+    while (run.status === 'running' && Date.now() < deadline) {
+      await this.refresh(run, deadline)
+      if (run.status !== 'running') break
+      await delay(Math.min(500, Math.max(0, deadline - Date.now())))
     }
     return this.publicRun(run)
   }
 
-  private async refresh(run: RunRecord): Promise<void> {
-    const listed = await callHarness<{ items: SessionSummary[] }>(this.config.webUrl, 'session.list')
-    const summary = listed.items.find(item => item.sessionId === run.sessionId)
-    if (summary === undefined) {
-      if (run.status === 'running') {
-        run.status = 'failed'
-        run.error = 'session disappeared from Harness'
-        run.finishedAt = new Date().toISOString()
+  private async refresh(run: RunRecord, deadline?: number): Promise<void> {
+    let page: HistoryPage
+    try {
+      if (deadline !== undefined && Date.now() >= deadline) return
+      const listed = await callHarness<{ items: SessionSummary[] }>(
+        this.config.webUrl,
+        'session.list',
+        {},
+        deadline === undefined ? {} : { timeoutMs: remainingMs(deadline) },
+      )
+      const summary = listed.items.find(item => item.sessionId === run.sessionId)
+      if (summary === undefined) {
+        run.lastRefreshError = null
+        // A vanished session is a business outcome, not a transport failure.
+        this.finish(run, 'failed', 'session disappeared from Harness')
+        return
       }
+      if (deadline !== undefined && Date.now() >= deadline) return
+      page = await callHarness<HistoryPage>(
+        this.config.webUrl,
+        'session.history',
+        {
+          sessionId: run.sessionId,
+          maxMessages: 40,
+        },
+        deadline === undefined ? {} : { timeoutMs: remainingMs(deadline) },
+      )
+    } catch (error) {
+      // Transport failures (Web restarting, fetch timeout) must not end the run
+      // or abort the wait; surface them on the snapshot and keep polling.
+      run.lastRefreshError = error instanceof Error ? error.message : String(error)
       return
     }
-    const page = await callHarness<HistoryPage>(this.config.webUrl, 'session.history', {
-      sessionId: run.sessionId,
-      maxMessages: 40,
-    })
+    run.lastRefreshError = null
     const outcome = inspectTurn(unwrapHistory(page), run.afterSeq, run.cancelRequested)
     if (outcome.text !== null) run.text = outcome.text
-    if (run.status !== 'running') return
     if (!outcome.ended) return
-    run.status = outcome.status ?? 'succeeded'
-    run.error = outcome.error
-    run.finishedAt = new Date().toISOString()
+    this.finish(run, outcome.status ?? 'succeeded', outcome.error)
+  }
+
+  private finish(run: RunRecord, status: Exclude<RunSnapshot['status'], 'running'>, error: string | null): void {
+    if (run.status === 'running') {
+      run.status = status
+      run.error = error
+      run.finishedAt = new Date().toISOString()
+    }
+    if (this.activeSessions.get(run.sessionId) === run.runId) {
+      this.activeSessions.delete(run.sessionId)
+    }
   }
 
   private async selectModel(
@@ -309,4 +371,8 @@ export class AttachManager {
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function remainingMs(deadline: number): number {
+  return Math.max(1, deadline - Date.now())
 }

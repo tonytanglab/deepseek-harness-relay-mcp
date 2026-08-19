@@ -24,6 +24,7 @@ export interface SessionSummary {
   running: boolean
   blank: boolean
   cwd?: string
+  origin?: 'subagent'
 }
 
 export interface WorkspaceView {
@@ -31,6 +32,11 @@ export interface WorkspaceView {
   path: string
   title: string
   sessionIds: string[]
+}
+
+export interface HarnessRpcOptions {
+  /** Per-call timeout. Defaults to 30 seconds. */
+  timeoutMs?: number
 }
 
 /**
@@ -53,13 +59,19 @@ export function resolveWebUrl(value: string): string {
  * @param payload - method payload.
  * @returns the unwrapped business value.
  */
-export async function callHarness<T>(origin: string, method: string, payload: Record<string, unknown> = {}): Promise<T> {
+export async function callHarness<T>(
+  origin: string,
+  method: string,
+  payload: Record<string, unknown> = {},
+  options: HarnessRpcOptions = {},
+): Promise<T> {
   const rpcId = crypto.randomUUID()
+  const timeoutMs = Math.max(1, Math.min(30_000, Math.trunc(options.timeoutMs ?? 30_000)))
   const response = await fetch(new URL(`/api/${method}`, origin), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ type: 'client-request', rpcId, method, payload }),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(timeoutMs),
   })
   if (!response.ok) throw new Error(`dsh-relay: ${method} HTTP ${String(response.status)}`)
   const full = await response.json() as ServerResponse<T>

@@ -2,7 +2,7 @@
 
 [English](SKILL.md) | 中文
 
-在 Web profile 安装 `dsh-relay` 之后使用本 skill。该插件只检测并写入 MCP 配置，不会在 Web 进程内运行 MCP stdio 服务器。
+在 Web profile 安装 `dsh-agents-relay` 之后使用本 skill（插件列表标题为 `agents-relay`）。该插件只检测并写入 MCP 配置，不会在 Web 进程内运行 MCP stdio 服务器。
 
 ## 配置 MCP 宿主
 

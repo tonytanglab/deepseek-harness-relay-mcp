@@ -2,7 +2,7 @@
 
 English | [中文](SKILL.zh.md)
 
-Use this skill after `dsh-relay` is installed in the Web profile. The plugin diagnoses and writes MCP configuration. It does not run the MCP stdio server inside Web.
+Use this skill after `dsh-agents-relay` is installed in the Web profile (list title `agents-relay`). The plugin diagnoses and writes MCP configuration. It does not run the MCP stdio server inside Web.
 
 ## Configure an MCP host
 

@@ -6,7 +6,11 @@ export interface HistoryEvent {
   type: string
   seq: number
   data?: {
-    reason?: { kind?: string; error?: { message?: string; code?: string } }
+    reason?: {
+      kind?: string
+      reason?: { kind?: string }
+      error?: { message?: string; code?: string }
+    }
     message?: { content?: Array<{ type?: string; text?: string }> }
   }
 }
@@ -66,6 +70,9 @@ export function unwrapHistory(page: HistoryPage): HistoryEvent[] {
 /**
  * Decide terminal status from events after `afterSeq`.
  * Ignores `session.list` idle so a prompt that has not started a turn stays running.
+ * Reason kinds follow the Harness wire protocol (`completed` / `aborted` /
+ * `error` / `blocked` / `interrupted` / `max-tokens`); there is no `cancelled`
+ * kind — a user stop arrives as `aborted` with `reason.kind: 'user'`.
  */
 export function inspectTurn(events: HistoryEvent[], afterSeq: number, cancelRequested: boolean): TurnInspection {
   const later = events.filter(event => event.seq > afterSeq)
@@ -73,15 +80,30 @@ export function inspectTurn(events: HistoryEvent[], afterSeq: number, cancelRequ
   const end = later.filter(event => event.type === 'turn/end').at(-1)
   if (end === undefined) return { ended: false, status: null, error: null, text }
   const reason = end.data?.reason
-  const kind = reason?.kind
-  if (kind === 'error') {
-    const message = reason?.error?.message?.trim() || 'Harness turn failed'
-    return { ended: true, status: 'failed', error: message, text }
+  switch (reason?.kind) {
+    case 'completed':
+      return { ended: true, status: 'succeeded', error: null, text }
+    case 'aborted': {
+      const why = reason.reason?.kind
+      if (why === 'user' || cancelRequested) {
+        return { ended: true, status: 'cancelled', error: null, text }
+      }
+      return { ended: true, status: 'failed', error: `turn aborted${why === undefined ? '' : `: ${why}`}`, text }
+    }
+    case 'error': {
+      const message = reason.error?.message?.trim() || 'Harness turn failed'
+      const code = reason.error?.code?.trim()
+      return { ended: true, status: 'failed', error: code ? `${code}: ${message}` : message, text }
+    }
+    case 'blocked':
+      return { ended: true, status: 'failed', error: 'turn blocked', text }
+    case 'interrupted':
+      return { ended: true, status: 'failed', error: 'turn interrupted', text }
+    case 'max-tokens':
+      return { ended: true, status: 'failed', error: 'turn reached the output-token limit', text }
+    default:
+      return { ended: true, status: 'failed', error: `unknown turn end: ${JSON.stringify(reason ?? null)}`, text }
   }
-  if (kind === 'cancelled' || cancelRequested) {
-    return { ended: true, status: 'cancelled', error: null, text }
-  }
-  return { ended: true, status: 'succeeded', error: null, text }
 }
 
 function lastAssistantText(events: HistoryEvent[]): string | null {

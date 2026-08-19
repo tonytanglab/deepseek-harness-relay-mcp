@@ -10,7 +10,7 @@ describe('dsh-relay real-load-path guard', () => {
     const loader = Object.create(Loader.prototype) as Loader
     const unwrapped = loader.unwrapExports(relay) as Record<string, unknown>
     expect(unwrapped).toBe(relay)
-    expect(unwrapped.name).toBe('relay')
+    expect(unwrapped.name).toBe('dsh-agents-relay')
     expect(unwrapped.inject).toEqual(['commands', 'tools'])
     expect(typeof unwrapped.apply).toBe('function')
     expect(unwrapped.Config).toBeDefined()

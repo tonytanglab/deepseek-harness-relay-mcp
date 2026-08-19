@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-19T23:33:02+08:00",
+  "plan": "001-harness-internal-control-plane-plan.md",
+  "status": "passed",
+  "package": {
+    "name": "harness-relay-mcp",
+    "version": "0.2.0",
+    "tarballBytes": 1012568,
+    "publishedFileCount": 194,
+    "unpackedBytes": 4105976,
+    "maximumUnpackedBytes": 8388608
+  },
+  "automatedGates": {
+    "typescriptStrict": "passed",
+    "tests": {
+      "passed": 118,
+      "failed": 0
+    },
+    "build": "passed",
+    "mcpSmoke": {
+      "status": "passed",
+      "toolCount": 25
+    },
+    "packageWhitelist": "passed",
+    "pluginValidator": "passed",
+    "skillValidator": "passed-with-python-utf8-mode",
+    "utf8NoBom": {
+      "status": "passed",
+      "filesChecked": 148
+    }
+  },
+  "isolatedProfile": {
+    "officialAdd": "passed",
+    "dumpConfig": "passed",
+    "hostStart": "passed",
+    "finalPackageProxySmoke": "passed",
+    "peerCheck": "passed",
+    "abruptRestartRecovery": {
+      "status": "passed",
+      "runsRecovered": 1,
+      "servicesRecovered": 1
+    },
+    "officialRemoveWithoutBundleResidue": "passed"
+  },
+  "nativeLifecycleEvidence": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "reasoningEffort": "max",
+    "permissionPreset": "read-only",
+    "promptAdmission": "accepted",
+    "webStatus": 200,
+    "terminalResult": "MISSING_CREDENTIAL",
+    "terminalResultExplanation": "隔离 DSH_HOME 未复制用户真实 DeepSeek 凭据；该结果验证了参数选择、原生权限、提示词提交、持久状态和 Web 会话链接链路。"
+  },
+  "realProfile": {
+    "harnessRepository": "D:\\AI\\deepseek-harness",
+    "profile": "web",
+    "installedPackage": "harness-relay-mcp",
+    "installedVersion": "0.2.0+codex.20260819152226",
+    "dumpConfigContainsBundle": true,
+    "slashFreeInventoryName": "harness-relay-mcp",
+    "peerCheck": "passed",
+    "harnessSourceModified": false,
+    "activation": "requires-restart-of-already-running-host"
+  },
+  "codexPlugin": {
+    "marketplace": "personal",
+    "installedVersion": "0.2.0+codex.20260819152226",
+    "status": "passed",
+    "activation": "new-codex-task"
+  },
+  "cleanup": {
+    "temporaryProfilesRemoved": 4,
+    "oldTarballsRemoved": 3,
+    "releaseTarballRetainedForProfileDependency": true
+  }
+}

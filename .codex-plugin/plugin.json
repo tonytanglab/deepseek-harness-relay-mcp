@@ -1,0 +1,32 @@
+{
+  "name": "deepseek-harness-relay",
+  "version": "0.2.0",
+  "description": "Delegate and monitor DeepSeek Harness work from any MCP agent.",
+  "author": {
+    "name": "TonyTangLab"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "mcp",
+    "delegation",
+    "agents"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Harness Relay MCP",
+    "shortDescription": "Delegate and monitor DeepSeek Harness tasks.",
+    "longDescription": "Delegate long-running work to DeepSeek Harness from any MCP agent and monitor native sessions and durable events to completion.",
+    "developerName": "TonyTangLab",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Delegate this bounded task to DeepSeek Harness.",
+      "Run an independent Harness analysis and monitor it to completion."
+    ]
+  }
+}

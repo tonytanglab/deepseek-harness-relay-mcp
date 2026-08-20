@@ -8,4 +8,7 @@ coverage/
 .DS_Store
 Thumbs.db
 /docs/
+!/DOCS/
+/DOCS/*
+!/DOCS/002-harness-rc8-relay-0.2.3-plan.md
 /001-harness-internal-control-plane-plan.md

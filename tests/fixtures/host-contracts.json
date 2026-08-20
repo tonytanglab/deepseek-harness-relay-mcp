@@ -1,4 +1,49 @@
 {
+  "hostDescriptionRc8": {
+    "version": "rc.8",
+    "mode": "contract",
+    "home": "D:\\Harness\\profiles\\web"
+  },
+  "historyRc8": {
+    "events": [
+      {
+        "event": {
+          "type": "assistant/message",
+          "seq": 4,
+          "time": 1786800000004,
+          "data": {
+            "message": {
+              "content": [
+                { "type": "text", "text": "rc.8 final" }
+              ],
+              "interrupted": true
+            }
+          }
+        }
+      },
+      {
+        "event": {
+          "type": "turn/end",
+          "seq": 5,
+          "time": 1786800000005,
+          "data": { "reason": { "kind": "completed" } }
+        }
+      }
+    ],
+    "hasMore": false,
+    "projections": {
+      "values": {
+        "permissions": { "currentValue": "read-only" },
+        "imageLimits": {
+          "maxImageDimension": 4096,
+          "maxPixels": 16777216,
+          "maxImages": 20,
+          "maxMessageBytes": 104857600,
+          "mediaTypes": ["image/png", "image/jpeg", "image/webp", "image/gif"]
+        }
+      }
+    }
+  },
   "acceptedPrompt": {
     "accepted": true,
     "messageId": "message-golden"

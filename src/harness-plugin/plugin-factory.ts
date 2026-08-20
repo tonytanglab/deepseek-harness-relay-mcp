@@ -17,7 +17,7 @@ export interface HarnessPluginContext {
   sessions: unknown
   permissionPresets: unknown
   effect(
-    install: () => Promise<() => Promise<void>>,
+    install: () => Promise<() => Promise<void>> | AsyncIterable<() => void | Promise<void>, void, void>,
     label?: string,
   ): unknown
 }
@@ -39,6 +39,7 @@ export interface HarnessPluginRuntime<TContext extends HarnessPluginContext> {
     ctx: TContext,
     config: HarnessPluginConfig,
     adapters: EmbeddedRelayAdapters,
+    options: { signal: AbortSignal },
   ): Promise<EmbeddedRelayAuthority>
 }
 
@@ -64,9 +65,11 @@ export function createHarnessPlugin<TContext extends HarnessPluginContext>(
     apply(ctx, rawConfig) {
       const config = resolveHarnessPluginConfig(rawConfig)
       const adapters = runtime.createAdapters(ctx)
-      ctx.effect(async () => {
-        const authority = await runtime.startAuthority(ctx, config, adapters)
-        return async () => authority.disposeInfrastructure({ drainTimeoutMs: config.drainTimeoutMs })
+      ctx.effect(async function* () {
+        const controller = new AbortController()
+        yield () => controller.abort()
+        const authority = await runtime.startAuthority(ctx, config, adapters, { signal: controller.signal })
+        yield () => authority.disposeInfrastructure({ drainTimeoutMs: config.drainTimeoutMs })
       }, 'harness-relay-mcp.embedded-authority')
     },
   }

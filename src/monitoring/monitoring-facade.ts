@@ -20,17 +20,19 @@ const CONTRACT_VERSION = '1.0.0'
 
 export class MonitoringFacade {
   readonly #notifications: NotificationBuffer
+  readonly #now: () => Date
 
   constructor(options: MonitoringOptions = {}) {
+    this.#now = options.now ?? (() => new Date())
     this.#notifications = new NotificationBuffer(
       options.maxQueueItems ?? DEFAULT_MAX_QUEUE_ITEMS,
       options.maxQueueBytes ?? DEFAULT_MAX_QUEUE_BYTES,
-      options.now ?? (() => new Date()),
+      this.#now,
     )
   }
 
   project(snapshot: RunSnapshot, projection: MonitoringProjection = {}): RunSummary {
-    const updatedAt = projection.updatedAt ?? snapshot.finishedAt ?? snapshot.startedAt
+    const updatedAt = projection.updatedAt ?? snapshot.finishedAt ?? snapshot.lastProgressAt ?? snapshot.startedAt
     const elapsedMs = calculateElapsedMs(snapshot.startedAt, snapshot.finishedAt ?? updatedAt)
     const summary: RunSummary = {
       runId: snapshot.runId,

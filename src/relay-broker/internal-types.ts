@@ -5,4 +5,6 @@ export interface RunRecord {
   baselineSeq: number
   promptRpcId: string
   events: RpcEvent[]
+  /** Last Host projection sequence seen in this process; not persisted as event truth. */
+  lastObservedProjectionSeq?: number
 }

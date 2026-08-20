@@ -20,7 +20,7 @@ export function finalAssistantText(events: RpcEvent[]): string {
   const messages = events.flatMap(event => {
     if (event.type !== 'assistant/message') return []
     const message = objectAt(event.data, 'message')
-    const content = message === null ? null : message.content
+    const content = message?.content ?? event.data.content
     if (typeof content === 'string') return [[{ type: 'text', text: content }]]
     return Array.isArray(content) ? [content] : []
   })
@@ -34,10 +34,36 @@ export function finalAssistantText(events: RpcEvent[]): string {
   )).join('\n\n')
 }
 
-export function terminalOutcome(event: RpcEvent, cancelRequested: boolean): { status: Exclude<RunStatus, 'running' | 'needs_attention' | 'unknown'>; error: string | null; warning?: string } {
+/**
+ * Returns whether the last assistant surface event in a run was interrupted.
+ *
+ * rc.8 places the marker beside the assistant message under the event data;
+ * the nested fallback keeps the projection defensive for early fixtures that
+ * attached it to the message object itself.
+ */
+export function finalAssistantInterrupted(events: RpcEvent[]): boolean {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type !== 'assistant/message') continue
+    if (event.data.interrupted === true) return true
+    const message = objectAt(event.data, 'message')
+    return message?.interrupted === true
+  }
+  return false
+}
+
+export function terminalOutcome(event: RpcEvent, cancelRequested: boolean, interrupted = false): { status: Exclude<RunStatus, 'running' | 'needs_attention' | 'unknown'>; error: string | null; warning?: string } {
   const reason = objectAt(event.data, 'reason')
   const kind = reason === null ? null : stringAt(reason, 'kind')
-  if (kind === 'completed') return { status: 'succeeded', error: null }
+  if (kind === 'completed') {
+    return interrupted
+      ? {
+          status: 'incomplete',
+          error: null,
+          warning: 'Harness marked the final assistant output as interrupted; the retained result is partial and may be continued with reply_run',
+        }
+      : { status: 'succeeded', error: null }
+  }
   if (kind === 'aborted') {
     const detail = objectAt(reason ?? {}, 'reason')
     const detailKind = detail === null ? null : stringAt(detail, 'kind')

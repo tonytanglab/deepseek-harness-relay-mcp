@@ -12,7 +12,7 @@ import { PermissionGatewayFacade, type PermissionProvider } from '../src/permiss
 test('Cordis plugin factory exposes native injects and disposes infrastructure without cancelling runs', async () => {
   const schema = new RecordingSchemaFactory()
   const lifecycle: string[] = []
-  let installer: (() => Promise<() => Promise<void>>) | undefined
+  let installer: (() => Promise<() => Promise<void>> | AsyncIterable<() => void | Promise<void>, void, void>) | undefined
   const ctx: HarnessPluginContext = {
     apiProxy: {},
     webServer: {},
@@ -57,9 +57,49 @@ test('Cordis plugin factory exposes native injects and disposes infrastructure w
 
   plugin.apply(ctx, { drainTimeoutMs: 750 })
   assert(installer !== undefined)
-  const dispose = await installer()
-  await dispose()
+  const effect = installer()
+  assert(Symbol.asyncIterator in effect)
+  const iterator = effect[Symbol.asyncIterator]()
+  const cancel = await iterator.next()
+  assert.equal(cancel.done, false)
+  const dispose = await iterator.next()
+  assert.equal(dispose.done, false)
+  await dispose.value()
   assert.deepEqual(lifecycle, ['started', 'disposed:750'])
+})
+
+test('Cordis plugin factory exposes an abort disposer before authority startup settles', async () => {
+  let installer: (() => Promise<() => Promise<void>> | AsyncIterable<() => void | Promise<void>, void, void>) | undefined
+  const ctx: HarnessPluginContext = {
+    apiProxy: {}, webServer: {}, sessions: {}, permissionPresets: {},
+    effect(install) { installer = install; return () => {} },
+  }
+  const gateway = new HarnessGatewayFacade(new Proxy({}, {
+    get: () => async () => { throw new Error('not used') },
+  }) as HarnessGatewayProvider)
+  const permissions = new PermissionGatewayFacade(new Proxy({}, {
+    get: () => async () => { throw new Error('not used') },
+  }) as PermissionProvider)
+  const plugin = createHarnessPlugin({
+    schema: new RecordingSchemaFactory(),
+    createAdapters: () => ({ gateway, permissions }),
+    async startAuthority(_ctx, _config, _adapters, { signal }) {
+      await new Promise<void>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('startup cancelled')), { once: true })
+      })
+      throw new Error('unreachable')
+    },
+  })
+  plugin.apply(ctx, {})
+  assert(installer !== undefined)
+  const effect = installer()
+  assert(Symbol.asyncIterator in effect)
+  const iterator = effect[Symbol.asyncIterator]()
+  const cancel = await iterator.next()
+  assert.equal(cancel.done, false)
+  const pendingStartup = iterator.next()
+  await cancel.value()
+  await assert.rejects(pendingStartup, /startup cancelled/iu)
 })
 
 test('headless profile preflight blocks before profile mutation', () => {

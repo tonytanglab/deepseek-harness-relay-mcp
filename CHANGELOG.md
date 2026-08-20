@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.2.3
+
+### 2026-08-20 22:21
+
+- 统一 embedded bundle 与 stdio proxy 的 `DSH_HOME`、`DSH_PROFILE` 和运行目录解析；未显式配置时使用用户目录下的 `.dsh` 与 `web` profile，并新增结构化路径错误和启动前目录校验。
+- 新增无凭证的 `relay-status.json` v1 生命周期 sidecar、POST 启动握手、authority 有界退避与可取消安全接管；仅确认旧 PID 已死亡时恢复，alive/unknown owner 始终 fail-closed。
+- stdio proxy 改为本地 MCP 优先，远端异常时保留本地 `doctor`，将 descriptor/status 错配及 401/404/405/503 统一投影为 `RELAY_ROUTE_UNAVAILABLE`，并可在同一进程内跟随新 owner epoch 恢复工具发现。
+- 修复 rc.8 持久历史已完成但 Relay 仍为 running、steer 截断最终输出、interrupted 被误判完整成功及 summary 时间陈旧的问题；补充 rc.8 消费面合同、升级重启交叠、状态/恢复和模块边界回归门，并公告 `status_run` 将于 0.3.0 删除。
+
 ## 0.2.2
 
 ### 2026-08-20 11:57

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test, { type TestContext } from 'node:test'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
@@ -14,7 +14,7 @@ import { MonitoringFacade } from '../src/monitoring/index.js'
 import { RelayFacade } from '../src/relay-broker/index.js'
 import { StdioProxyFacade } from '../src/stdio-proxy/index.js'
 
-test('proxy reports Host shutdown structurally and a restarted proxy recovers after Host restart', async t => {
+test('same proxy degrades locally and reconnects after the Host restarts', async t => {
   ;(globalThis as Record<string, unknown>).__DSH_RELAY_VERSION__ = 'test'
   const root = await temporaryDirectory(t)
   const token = 'R'.repeat(43)
@@ -45,21 +45,23 @@ test('proxy reports Host shutdown structurally and a restarted proxy recovers af
   assert.ok(mcpAdapterCreations >= 4)
 
   await firstHost.facade.drain()
-  const shutdownFailure = await captureFailure(firstConnection.client.listTools())
-  assert(shutdownFailure instanceof Error)
-  assert.match(shutdownFailure.message, /503|draining/iu)
-  assert.equal(errorDataCode(shutdownFailure), 'DRAINING')
+  assert.deepEqual((await firstConnection.client.listTools()).tools.map(tool => tool.name), ['doctor'])
+  const degradedDoctor = await firstConnection.client.callTool({ name: 'doctor', arguments: {} })
+  assert.equal((degradedDoctor.structuredContent as { errorCode?: unknown }).errorCode, 'REMOTE_DRAINING')
+  const unavailable = await firstConnection.client.callTool({ name: 'start_run', arguments: {} })
+  assert.equal(unavailable.isError, true)
+  assert.equal((unavailable.structuredContent as { code?: unknown }).code, 'RELAY_ROUTE_UNAVAILABLE')
   await close(firstHost.http)
-  await Promise.allSettled([firstConnection.client.close(), firstConnection.proxy.close()])
 
   const secondHost = await startHost(config, token, port, () => { brokerCreations += 1 }, () => { mcpAdapterCreations += 1 })
   t.after(async () => { await secondHost.facade.drain(); await close(secondHost.http) })
   await writeDescriptor(descriptorFile, tokenFile, port, 2)
-  const recovered = await connectProxy(descriptorFile)
-  t.after(async () => { await Promise.allSettled([recovered.client.close(), recovered.proxy.close()]) })
 
-  assert.ok((await recovered.client.listTools()).tools.some(tool => tool.name === 'doctor'))
-  await recovered.client.listTools()
+  const recoveredTools = await firstConnection.client.listTools()
+  assert.ok(recoveredTools.tools.some(tool => tool.name === 'doctor'))
+  assert.ok(recoveredTools.tools.some(tool => tool.name === 'start_run'))
+  const recoveredDoctor = await firstConnection.client.callTool({ name: 'doctor', arguments: {} })
+  assert.equal((recoveredDoctor.structuredContent as { ok?: unknown }).ok, true)
   assert.equal(brokerCreations, 2)
   assert.ok(mcpAdapterCreations >= 7)
 })
@@ -104,9 +106,10 @@ async function connectProxy(descriptorFile: string): Promise<{ proxy: StdioProxy
 }
 
 async function writeDescriptor(descriptorFile: string, tokenFile: string, port: number, ownerEpoch: number): Promise<void> {
+  const authorityId = `authority-${ownerEpoch}`
   await writeFile(descriptorFile, JSON.stringify({
     schemaVersion: 1,
-    authorityId: `authority-${ownerEpoch}`,
+    authorityId,
     mode: 'embedded',
     mcpUrl: `http://127.0.0.1:${port}/plugins/dsh-relay/mcp`,
     tokenFilePath: tokenFile,
@@ -114,23 +117,21 @@ async function writeDescriptor(descriptorFile: string, tokenFile: string, port: 
     ownerEpoch,
     updatedAt: new Date().toISOString(),
   }), { encoding: 'utf8' })
-}
-
-function errorDataCode(error: Error): unknown {
-  if ('data' in error && typeof error.data === 'object' && error.data !== null) {
-    const code = (error.data as { code?: unknown }).code
-    if (code !== undefined) return code
-  }
-  return /DRAINING/iu.test(error.message) ? 'DRAINING' : undefined
-}
-
-async function captureFailure(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise
-    return null
-  } catch (error) {
-    return error
-  }
+  await writeFile(join(dirname(descriptorFile), 'relay-status.json'), JSON.stringify({
+    schemaVersion: 1,
+    state: 'ready',
+    authorityId,
+    mode: 'embedded',
+    instanceId: authorityId,
+    ownerPid: process.pid,
+    processStartedAt: '2026-08-20T00:00:00.000Z',
+    ownerEpoch,
+    hostIdentity: `http://127.0.0.1:${port}/`,
+    profile: 'web',
+    dshHome: dirname(descriptorFile),
+    updatedAt: new Date().toISOString(),
+    lastError: null,
+  }), { encoding: 'utf8' })
 }
 
 function portOf(server: HttpServer): number {

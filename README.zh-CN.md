@@ -165,7 +165,9 @@ pnpm run build
 }
 ```
 
-proxy 默认读取 `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json`；自定义状态目录时显式设置 `DSH_RELAY_ENDPOINT_DESCRIPTOR`。客户端配置不保存 token。`harness-relay-mcp` 包根入口是 Harness bundle，同时提供 `harness-relay-mcp`、`harness-relay-mcp-proxy` 命令；旧 `dsh-relay` 命令作为兼容别名保留。
+proxy 默认读取 `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json`；未设置 `DSH_HOME` 时统一回退到用户目录下的 `.dsh`，空白 `DSH_PROFILE` 回退到 `web`。自定义状态目录时显式设置 `DSH_RELAY_ENDPOINT_DESCRIPTOR`。客户端配置不保存 token。`harness-relay-mcp` 包根入口是 Harness bundle，同时提供 `harness-relay-mcp`、`harness-relay-mcp-proxy` 命令；旧 `dsh-relay` 命令作为兼容别名保留。
+
+0.2.3 起，内部 bundle 会在 endpoint 同目录原子发布不含凭证的 `relay-status.json`。stdio proxy 先启动本地 MCP；当 endpoint 缺失、状态失败、owner epoch 不匹配、token 不可读或 POST 返回 401/404/405/503 时，`tools/list` 至少保留本地 `doctor`，其他工具统一返回 `RELAY_ROUTE_UNAVAILABLE`。Host 恢复后，同一个 proxy 会重新连接并发送 `tools/list_changed`；不处理该通知的客户端需要主动重新调用 `tools/list`。
 
 ## 快速开始
 
@@ -311,9 +313,9 @@ DSH Relay 通过 `commands/execute` 调用 Harness 原生 `/permission` 命令�
 | `start_run` | 创建或复用会话并提交受跟踪任务。 |
 | `start_review` | 固定使用 Harness 原生 `read-only` 权限提交审查任务。 |
 | `steer_run` | 向活动运行插入纠偏指令。 |
-| `get_run` | 读取并对账运行；`status_run` 的兼容别名。 |
+| `get_run` | 读取并对账运行；推荐使用的运行状态入口。 |
 | `get_run_summary` | 将运行投影为稳定的状态、模型、权限、耗时和下一步字段。 |
-| `status_run` | 根据 Host 状态和持久事件对账运行。 |
+| `status_run` | 已弃用的兼容别名；请迁移到 `get_run`，计划在 0.3.0 删除。 |
 | `open_run` | 打开原生 Harness Web 会话链接。 |
 | `wait_run` | 最长等待 30 秒以获取运行进展。 |
 | `list_runs` | 对账并列出已持久化运行。 |
@@ -330,7 +332,7 @@ DSH Relay 通过 `commands/execute` 调用 Harness 原生 `/permission` 命令�
 
 `setup_doctor` 同样无副作用。文件系统、Broker、Host、工作区、模型和权限事实必须由获得授权的调用方提供；未提供的探针会标记为 `skipped`，不会猜测结果。
 
-`get_run_summary` 消费 Relay 权威运行快照并输出版本化监控投影。`read_notifications` 重放当前 MCP Server 进程保留的通知，并在游标缺口时返回明确的重同步元数据。原生 MCP 通知 transport 尚未启用，因此通知缓冲为空属于正常情况，客户端必须自动降级到 `get_run_summary`、`wait_run` 或 `status_run` 轮询。
+`get_run_summary` 消费 Relay 权威运行快照并输出版本化监控投影。`read_notifications` 重放当前 MCP Server 进程保留的通知，并在游标缺口时返回明确的重同步元数据。原生运行通知 transport 尚未启用，因此通知缓冲为空属于正常情况，客户端必须自动降级到 `get_run_summary`、`wait_run` 或 `get_run` 轮询。
 
 ## 持久化与故障恢复
 

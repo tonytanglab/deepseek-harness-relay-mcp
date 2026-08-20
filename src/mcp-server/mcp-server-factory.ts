@@ -165,7 +165,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
   }, clientPrincipalId)))
 
   server.registerTool('get_run', {
-    title: 'Read a Harness run', description: 'Reconcile and return one run snapshot.', inputSchema: { runId: id }, annotations: readOnly,
+    title: 'Read a Harness run', description: 'Preferred tool to reconcile and return one run snapshot; replaces the deprecated status_run alias.', inputSchema: { runId: id }, annotations: readOnly,
   }, guarded(input => relay.getRun(input.runId)))
 
   server.registerTool('get_run_summary', {
@@ -192,7 +192,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
   }, guarded(async input => monitoring.readNotifications(input.cursor)))
 
   server.registerTool('status_run', {
-    title: 'Get Harness run status', description: 'Reconcile one run from durable Harness events and return its current status.', inputSchema: { runId: id }, annotations: readOnly,
+    title: 'Deprecated: get Harness run status', description: 'Deprecated compatibility alias; use get_run. Scheduled for removal in 0.3.0.', inputSchema: { runId: id }, annotations: readOnly,
   }, guarded(input => relay.getRun(input.runId)))
 
   server.registerTool('open_run', {

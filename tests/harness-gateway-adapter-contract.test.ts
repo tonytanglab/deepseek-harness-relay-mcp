@@ -20,7 +20,18 @@ runAdapterContract('InProcess', outcome => inProcessGateway(outcome))
 
 function runAdapterContract(name: string, create: (outcome: Outcome) => HarnessGatewayFacade): void {
   test(`${name} adapter contract returns the semantic Host description`, async () => {
-    assert.deepEqual(await create({ kind: 'success' }).describeHost(), { version: 'rc.7', mode: 'contract' })
+    assert.deepEqual(await create({ kind: 'success' }).describeHost(), {
+      version: 'rc.8', mode: 'contract', home: 'D:\\Harness\\profiles\\web',
+    })
+  })
+
+  test(`${name} adapter contract consumes additive rc.8 history projections`, async () => {
+    const history = await create({ kind: 'success' }).readHistory({ sessionId: 'session-1', maxMessages: 100 })
+    assert.equal(history.events[0]?.event.type, 'assistant/message')
+    assert.equal(history.projections?.values?.imageLimits?.maxImageDimension, 4096)
+    assert.deepEqual(history.projections?.values?.imageLimits?.mediaTypes, [
+      'image/png', 'image/jpeg', 'image/webp', 'image/gif',
+    ])
   })
 
   test(`${name} adapter contract preserves definitive business rejection`, async () => {
@@ -41,10 +52,14 @@ function runAdapterContract(name: string, create: (outcome: Outcome) => HarnessG
 function httpGateway(outcome: Outcome): HarnessGatewayFacade {
   return createHttpHarnessGateway('http://127.0.0.1:3080/', 1_000, async (_input, init) => {
     const body = JSON.parse(String(init?.body)) as { rpcId: string }
+    const request = JSON.parse(String(init?.body)) as { method: string }
+    if (request.method === 'session.history') {
+      return Response.json({ rpcId: body.rpcId, result: { ok: true, value: rc8History() } })
+    }
     return Response.json({
       rpcId: body.rpcId,
       result: outcome.kind === 'success'
-        ? { ok: true, value: { version: 'rc.7', mode: 'contract' } }
+        ? { ok: true, value: { version: 'rc.8', mode: 'contract', home: 'D:\\Harness\\profiles\\web' } }
         : { ok: false, error: { code: outcome.code, message: outcome.message, details: {} } },
     })
   })
@@ -53,13 +68,20 @@ function httpGateway(outcome: Outcome): HarnessGatewayFacade {
 function inProcessGateway(outcome: Outcome): HarnessGatewayFacade {
   const client = new Proxy({}, {
     get: (_target, domain) => {
+      if (domain === 'sessions') {
+        return {
+          async history(): Promise<InProcessRpcResponse<ReturnType<typeof rc8History>>> {
+            return { rpcId: 'in-process-history', result: { ok: true, value: rc8History() } }
+          },
+        }
+      }
       if (domain !== 'host') return new Proxy({}, { get: () => async () => { throw new Error('unexpected method') } })
       return {
         async describe(): Promise<InProcessRpcResponse<Record<string, unknown>>> {
           return {
             rpcId: 'in-process-contract',
             result: outcome.kind === 'success'
-              ? { ok: true, value: { version: 'rc.7', mode: 'contract' } }
+              ? { ok: true, value: { version: 'rc.8', mode: 'contract', home: 'D:\\Harness\\profiles\\web' } }
               : { ok: false, error: { code: outcome.code, message: outcome.message, details: {} } },
           }
         },
@@ -85,4 +107,29 @@ function assertGatewayError(error: unknown, code: string, definitive: boolean, r
   assert.equal(error.definitiveRejection, definitive)
   assert.equal(error.retryable, retryable)
   return true
+}
+
+function rc8History() {
+  return {
+    events: [{
+      event: {
+        type: 'assistant/message',
+        seq: 4,
+        time: 1786800000004,
+        data: { message: { content: [{ type: 'text', text: 'rc.8 final' }], interrupted: true } },
+      },
+    }],
+    hasMore: false,
+    projections: {
+      values: {
+        imageLimits: {
+          maxImageDimension: 4096,
+          maxPixels: 16_777_216,
+          maxImages: 20,
+          maxMessageBytes: 104_857_600,
+          mediaTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
+        },
+      },
+    },
+  }
 }

@@ -9,6 +9,12 @@ import {
 } from '../src/harness-gateway/index.js'
 
 const golden = JSON.parse(await readFile(new URL('./fixtures/host-contracts.json', import.meta.url), 'utf8')) as {
+  hostDescriptionRc8: { version: string; mode: string; home: string }
+  historyRc8: {
+    events: Array<{ event: Record<string, unknown> }>
+    hasMore: false
+    projections: { values: { permissions: { currentValue: string }; imageLimits: Record<string, unknown> } }
+  }
   acceptedPrompt: { accepted: true; messageId: string }
   definitiveRejection: { code: string; message: string }
   retryableFailure: { code: string; message: string }
@@ -19,15 +25,15 @@ test('HTTP gateway maps semantic operations to the public Host wire contract', a
   const requests: Array<{ method: string; payload: Record<string, unknown>; rpcId: string }> = []
   const gateway = createHttpHarnessGateway('http://127.0.0.1:3080/', 1_000, host(request => {
     requests.push(request)
+    if (request.method === 'host.describe') return golden.hostDescriptionRc8
     if (request.method === 'workspace.create') return { workspace: workspace() }
     if (request.method === 'session.prompt') return golden.acceptedPrompt
-    if (request.method === 'session.history') {
-      return { events: [], hasMore: false, projections: { values: { permissions: { currentValue: 'read-only' } } } }
-    }
+    if (request.method === 'session.history') return golden.historyRc8
     if (request.method === 'commands/execute') return { result: { kind: 'success' } }
     throw new Error(`unexpected method: ${request.method}`)
   }))
 
+  assert.deepEqual(await gateway.describeHost(), golden.hostDescriptionRc8)
   assert.equal((await gateway.createWorkspace('D:\\AI\\project')).workspaceId, 'workspace-1')
   assert.deepEqual(await gateway.submitPrompt('session-1', 'queue', [{ type: 'text', text: 'review' }], 'rpc-prompt'), {
     accepted: true,
@@ -35,12 +41,16 @@ test('HTTP gateway maps semantic operations to the public Host wire contract', a
     messageId: 'message-golden',
   })
   assert.deepEqual(await gateway.readPermissionProjection('session-1'), { currentValue: 'read-only' })
+  const history = await gateway.readHistory({ sessionId: 'session-1', maxMessages: 100 })
+  assert.deepEqual(history.projections?.values?.imageLimits, golden.historyRc8.projections.values.imageLimits)
   assert.deepEqual(await gateway.requestPermissionSelection('session-1', 'workspace-write'), { kind: 'success' })
   assert.deepEqual(requests.map(request => [request.method, request.payload, request.rpcId]), [
-    ['workspace.create', { path: 'D:\\AI\\project' }, requests[0]!.rpcId],
+    ['host.describe', {}, requests[0]!.rpcId],
+    ['workspace.create', { path: 'D:\\AI\\project' }, requests[1]!.rpcId],
     ['session.prompt', { sessionId: 'session-1', mode: 'queue', content: [{ type: 'text', text: 'review' }] }, 'rpc-prompt'],
-    ['session.history', { sessionId: 'session-1', maxMessages: 1 }, requests[2]!.rpcId],
-    ['commands/execute', { args: { agentId: 'session-1', line: '/permission workspace-write' } }, requests[3]!.rpcId],
+    ['session.history', { sessionId: 'session-1', maxMessages: 1 }, requests[3]!.rpcId],
+    ['session.history', { sessionId: 'session-1', maxMessages: 100 }, requests[4]!.rpcId],
+    ['commands/execute', { args: { agentId: 'session-1', line: '/permission workspace-write' } }, requests[5]!.rpcId],
   ])
 })
 

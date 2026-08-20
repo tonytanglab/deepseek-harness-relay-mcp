@@ -41,6 +41,14 @@ export interface AuthorityOwnerLease {
   release(): Promise<boolean>
 }
 
+export interface AuthorityAcquireRetryOptions {
+  budgetMs?: number
+  initialDelayMs?: number
+  maxDelayMs?: number
+  jitterMs?: number
+  signal?: AbortSignal
+}
+
 export interface RelayEndpointDescriptor {
   schemaVersion: 1
   authorityId: string

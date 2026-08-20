@@ -1,3 +1,9 @@
 export { readEndpointDescriptor } from './descriptor-reader.js'
 export { StdioProxyFacade } from './stdio-proxy-facade.js'
-export type { RelayEndpointDescriptor, StdioProxyConfig } from './types.js'
+export type {
+  ProxyDoctorReport,
+  ProxyRouteFailure,
+  ProxyRouteReasonCode,
+  RelayEndpointDescriptor,
+  StdioProxyConfig,
+} from './types.js'

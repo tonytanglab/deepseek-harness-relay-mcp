@@ -45,7 +45,20 @@ export interface HistoryRequest {
 export interface HistoryPage {
   events: Array<{ event: RpcEvent }>
   hasMore: boolean
-  projections?: { values?: { permissions?: { currentValue?: string } } }
+  projections?: {
+    asOfSeq?: number
+    values?: {
+      permissions?: { currentValue?: string }
+      imageLimits?: {
+        [key: string]: unknown
+        maxImageDimension?: number
+        maxPixels?: number
+        maxImages?: number
+        maxMessageBytes?: number
+        mediaTypes?: string[]
+      }
+    }
+  }
 }
 
 export interface SettingsNamespace {

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import test from 'node:test'
 import {
+  AuthorityAcquireCancelledError,
   AuthorityConflictError,
   AuthorityRegistryFacade,
   deriveAuthorityId,
@@ -140,6 +141,135 @@ test('malformed owner registry fails closed and is not overwritten', async () =>
     (error: unknown) => error instanceof AuthorityConflictError && error.code === 'AUTHORITY_REGISTRY_INVALID',
   )
   assert.equal(await readFile(ownerPath, { encoding: 'utf8' }), '{invalid')
+  await rm(registryDirectory, { recursive: true, force: true })
+})
+
+test('authority acquire retries live ownership with a bounded backoff and recovers after death', async () => {
+  const registryDirectory = await mkdtemp(join(tmpdir(), 'dsh-relay-authority-retry-'))
+  let probe: 'alive' | 'dead' | 'unknown' = 'alive'
+  let clock = Date.parse('2026-08-19T01:00:00.000Z')
+  const first = await new AuthorityRegistryFacade({
+    processId: 606,
+    processStartedAt: '2026-08-19T00:00:00.000Z',
+    processProbe: () => 'alive',
+  }).acquire({
+    registryDirectory,
+    authorityId: 'old',
+    mode: 'embedded',
+    hostIdentity: 'http://localhost:3080',
+    instanceId: 'old-instance',
+    ownerToken: 'old-token',
+  })
+  const waits: number[] = []
+  const replacement = new AuthorityRegistryFacade({
+    processId: 607,
+    processStartedAt: '2026-08-19T01:00:00.000Z',
+    now: () => new Date(clock),
+    processProbe: () => probe,
+    sleep: async milliseconds => {
+      waits.push(milliseconds)
+      clock += milliseconds
+      if (waits.length === 2) probe = 'dead'
+    },
+    random: () => 0,
+  })
+  const recovered = await replacement.acquireWithRetry({
+    registryDirectory,
+    authorityId: 'new',
+    mode: 'embedded',
+    hostIdentity: 'http://localhost:3080',
+    instanceId: 'new-instance',
+    recoverStale: true,
+  }, { budgetMs: 1_000, initialDelayMs: 10, maxDelayMs: 40, jitterMs: 0 })
+  assert.deepEqual(waits, [10, 20])
+  assert.equal(recovered.record.epoch, first.record.epoch + 1)
+  assert.equal(await recovered.release(), true)
+  await rm(registryDirectory, { recursive: true, force: true })
+})
+
+test('authority acquire retry times out live or unknown owners with structured ownership details', async () => {
+  const registryDirectory = await mkdtemp(join(tmpdir(), 'dsh-relay-authority-retry-timeout-'))
+  const first = await new AuthorityRegistryFacade({
+    processId: 608,
+    processStartedAt: '2026-08-19T00:00:00.000Z',
+    processProbe: () => 'alive',
+  }).acquire({
+    registryDirectory,
+    authorityId: 'old',
+    mode: 'embedded',
+    hostIdentity: 'http://localhost:3080',
+    instanceId: 'old-instance',
+    ownerToken: 'old-token',
+  })
+  let clock = Date.parse('2026-08-19T01:00:00.000Z')
+  const replacement = new AuthorityRegistryFacade({
+    processId: 609,
+    processStartedAt: '2026-08-19T01:00:00.000Z',
+    now: () => new Date(clock),
+    processProbe: () => 'unknown',
+    sleep: async milliseconds => { clock += milliseconds },
+    random: () => 0,
+  })
+  await assert.rejects(
+    replacement.acquireWithRetry({
+      registryDirectory,
+      authorityId: 'new',
+      mode: 'embedded',
+      hostIdentity: 'http://localhost:3080',
+      instanceId: 'new-instance',
+      recoverStale: true,
+    }, { budgetMs: 25, initialDelayMs: 10, maxDelayMs: 10, jitterMs: 0 }),
+    (error: unknown) => error instanceof AuthorityConflictError
+      && error.code === 'AUTHORITY_OWNED'
+      && error.message.includes('PID 608')
+      && error.message.includes('epoch 1')
+      && error.message.includes('25ms retry budget'),
+  )
+  assert.equal(await first.release(), true)
+  await rm(registryDirectory, { recursive: true, force: true })
+})
+
+test('authority acquire retry cancels promptly while sleeping', async () => {
+  const registryDirectory = await mkdtemp(join(tmpdir(), 'dsh-relay-authority-retry-cancel-'))
+  const first = await new AuthorityRegistryFacade({
+    processId: 610,
+    processStartedAt: '2026-08-19T00:00:00.000Z',
+    processProbe: () => 'alive',
+  }).acquire({
+    registryDirectory,
+    authorityId: 'old',
+    mode: 'embedded',
+    hostIdentity: 'http://localhost:3080',
+    instanceId: 'old-instance',
+    ownerToken: 'old-token',
+  })
+  const controller = new AbortController()
+  let sleeping = false
+  const replacement = new AuthorityRegistryFacade({
+    processId: 611,
+    processStartedAt: '2026-08-19T01:00:00.000Z',
+    processProbe: () => 'alive',
+    sleep: async (_milliseconds, signal) => {
+      sleeping = true
+      await new Promise<void>((resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+        signal?.addEventListener('abort', () => resolve(), { once: true })
+      })
+    },
+    random: () => 0,
+  })
+  const attempt = replacement.acquireWithRetry({
+    registryDirectory,
+    authorityId: 'new',
+    mode: 'embedded',
+    hostIdentity: 'http://localhost:3080',
+    instanceId: 'new-instance',
+    recoverStale: true,
+  }, { signal: controller.signal, budgetMs: 1_000, initialDelayMs: 10, jitterMs: 0 })
+  while (!sleeping) await new Promise(resolve => setImmediate(resolve))
+  controller.abort()
+  await assert.rejects(attempt, (error: unknown) => error instanceof AuthorityAcquireCancelledError)
+  assert.equal(await first.release(), true)
   await rm(registryDirectory, { recursive: true, force: true })
 })
 

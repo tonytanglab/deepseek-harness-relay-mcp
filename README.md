@@ -166,7 +166,9 @@ After the internal bundle starts, point MCP clients at the universal stdio proxy
 }
 ```
 
-The proxy defaults to `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json`; set `DSH_RELAY_ENDPOINT_DESCRIPTOR` when using a custom state directory. Client configuration never stores the token. The `harness-relay-mcp` package root is the Harness bundle and ships `harness-relay-mcp` plus `harness-relay-mcp-proxy`; the old `dsh-relay` commands remain compatibility aliases.
+The proxy defaults to `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json`; when `DSH_HOME` is unset it consistently falls back to `.dsh` under the user home, and a blank `DSH_PROFILE` falls back to `web`. Set `DSH_RELAY_ENDPOINT_DESCRIPTOR` when using a custom state directory. Client configuration never stores the token. The `harness-relay-mcp` package root is the Harness bundle and ships `harness-relay-mcp` plus `harness-relay-mcp-proxy`; the old `dsh-relay` commands remain compatibility aliases.
+
+Starting with 0.2.3, the internal bundle atomically publishes a credential-free `relay-status.json` beside the endpoint descriptor. The stdio proxy starts its local MCP surface first. If the endpoint is missing, startup failed, owner epochs disagree, the token is unreadable, or POST returns 401/404/405/503, `tools/list` still exposes the local `doctor` and other calls return `RELAY_ROUTE_UNAVAILABLE`. The same proxy reconnects after Host recovery and emits `tools/list_changed`; clients that do not process that notification must call `tools/list` again.
 
 ## Quick start
 
@@ -312,9 +314,9 @@ DSH Relay invokes the native Harness `/permission` command through `commands/exe
 | `start_run` | Create or reuse a session and submit a tracked task. |
 | `start_review` | Submit a task with the native permission preset fixed to `read-only`. |
 | `steer_run` | Insert a correction into an active run. |
-| `get_run` | Read and reconcile one run; compatibility alias for `status_run`. |
+| `get_run` | Read and reconcile one run; the preferred run-status entry point. |
 | `get_run_summary` | Project a run into stable status, model, permission, elapsed-time, and next-action fields. |
-| `status_run` | Reconcile one run from Host state and durable events. |
+| `status_run` | Deprecated compatibility alias; migrate to `get_run` before removal in 0.3.0. |
 | `open_run` | Open the native Harness Web session URL. |
 | `wait_run` | Wait for progress for up to 30 seconds. |
 | `list_runs` | Reconcile and list persisted runs. |
@@ -331,7 +333,7 @@ DSH Relay invokes the native Harness `/permission` command through `commands/exe
 
 `setup_doctor` is also side-effect free. Filesystem, Broker, Host, workspace, model, and permission facts must be supplied by an authorized caller; omitted probes are reported as `skipped` instead of being guessed.
 
-`get_run_summary` consumes the authoritative Relay run snapshot and exposes the versioned monitoring projection. `read_notifications` replays notifications retained by the current MCP server process and returns explicit cursor-gap metadata. Native MCP notification transport is not enabled yet, so clients must treat an empty buffer as normal and fall back to `get_run_summary`, `wait_run`, or `status_run` polling.
+`get_run_summary` consumes the authoritative Relay run snapshot and exposes the versioned monitoring projection. `read_notifications` replays notifications retained by the current MCP server process and returns explicit cursor-gap metadata. Native run-notification transport is not enabled yet, so clients must treat an empty buffer as normal and fall back to `get_run_summary`, `wait_run`, or `get_run` polling.
 
 ## Persistence and recovery
 

@@ -1,6 +1,6 @@
 import type { RelayConfig } from '../config.js'
 import type { HarnessGatewayFacade } from '../harness-gateway/index.js'
-import { finalAssistantText, highestSeq, mergeEvents, stringAt, terminalOutcome, userRpcId, utf8Tail } from '../run-events.js'
+import { finalAssistantInterrupted, finalAssistantText, highestSeq, mergeEvents, stringAt, terminalOutcome, userRpcId, utf8Tail } from '../run-events.js'
 import type { OperationRecord, RpcEvent, RunStatus } from '../types.js'
 import type { RunRecord } from './internal-types.js'
 import type { OperationJournal } from './operation-journal.js'
@@ -26,22 +26,26 @@ export class RunReconciler {
       await this.finalize(run, 'failed', `Harness session is no longer listed: ${run.snapshot.sessionId}`)
       return
     }
-    if (typeof session.projections?.asOfSeq === 'number') {
-      run.snapshot.lastEventSeq = Math.max(run.snapshot.lastEventSeq, session.projections.asOfSeq)
-    }
-    if (run.snapshot.lastEventSeq > previousLastSeq) this.recordProgress(run)
-    if (session.running) {
-      this.activeSessions.set(activeKey(run), run.snapshot.runId)
-      if (run.snapshot.promptMessageId !== null) {
-        this.markStalled(run)
-        return
-      }
-    }
+    if (session.running) this.activeSessions.set(activeKey(run), run.snapshot.runId)
+    const previousDurableSeq = highestSeq(run.events, run.baselineSeq)
     run.events = mergeEvents(run.events, await this.historyAfter(run.snapshot.sessionId, run.baselineSeq))
-    run.snapshot.lastEventSeq = Math.max(run.snapshot.lastEventSeq, highestSeq(run.events, run.baselineSeq))
-    if (run.snapshot.lastEventSeq > previousLastSeq) this.recordProgress(run)
+    const durableLastSeq = highestSeq(run.events, run.baselineSeq)
+    const projectionLastSeq = session.projections?.asOfSeq
+    const projectionProgress = typeof projectionLastSeq === 'number'
+      && run.lastObservedProjectionSeq !== undefined
+      && projectionLastSeq > run.lastObservedProjectionSeq
+    if (typeof projectionLastSeq === 'number') {
+      run.lastObservedProjectionSeq = Math.max(run.lastObservedProjectionSeq ?? projectionLastSeq, projectionLastSeq)
+    }
+    run.snapshot.lastEventSeq = Math.max(
+      run.snapshot.lastEventSeq,
+      durableLastSeq,
+      typeof projectionLastSeq === 'number' ? projectionLastSeq : run.snapshot.lastEventSeq,
+    )
+    if (durableLastSeq > previousDurableSeq || projectionProgress) this.recordProgress(run)
     const promptEvent = run.events.find(event => userRpcId(event) === run.promptRpcId)
     if (promptEvent === undefined) {
+      if (session.running && run.snapshot.promptAdmission === 'accepted') this.markStalled(run)
       await this.reconcileMissingPrompt(run, session.running, previousLastSeq)
       return
     }
@@ -52,23 +56,41 @@ export class RunReconciler {
     if (operation !== undefined && (operation.state === 'prepared' || operation.state === 'submitted' || operation.state === 'unknown')) {
       await this.journal.transition(operation, operation.state === 'unknown' ? 'reconciled' : 'acknowledged', { messageId: run.snapshot.promptMessageId })
     }
-    if (session.running) {
-      run.events = [promptEvent]
-      return
-    }
-    const nextUser = run.events.find(event => event.seq > promptEvent.seq && userRpcId(event) !== null)
-    const owned = run.events.filter(event => event.seq > promptEvent.seq && (nextUser === undefined || event.seq < nextUser.seq))
+    const owned = this.ownedEvents(run, promptEvent)
     const terminal = [...owned].reverse().find(event => event.type === 'turn/end')
     const relevant = owned.filter(event => terminal === undefined || event.seq <= terminal.seq)
     const retained = utf8Tail(finalAssistantText(relevant), this.config.maxAssistantTextBytes)
     run.snapshot.assistantText = retained.text
     run.snapshot.assistantTextBytes = retained.bytes
     run.snapshot.assistantTextTruncated = retained.truncated
-    if (terminal === undefined) return
-    const outcome = terminalOutcome(terminal, run.snapshot.cancelRequested)
+    if (terminal === undefined) {
+      if (session.running) this.markStalled(run)
+      return
+    }
+    const outcome = terminalOutcome(terminal, run.snapshot.cancelRequested, finalAssistantInterrupted(relevant))
     if (outcome.warning !== undefined && !run.snapshot.warnings.includes(outcome.warning)) run.snapshot.warnings.push(outcome.warning)
-    run.events = [promptEvent, terminal]
     await this.finalize(run, outcome.status, outcome.error)
+  }
+
+  private ownedEvents(run: RunRecord, promptEvent: RpcEvent): RpcEvent[] {
+    const ownedRpcIds = new Set<string>([run.promptRpcId])
+    const ownedMessageIds = new Set<string>()
+    if (run.snapshot.promptMessageId !== null) ownedMessageIds.add(run.snapshot.promptMessageId)
+    for (const operation of this.operations.values()) {
+      if (operation.runId !== run.snapshot.runId || operation.kind !== 'steer') continue
+      ownedRpcIds.add(operation.rpcId)
+      if (operation.messageId !== null) ownedMessageIds.add(operation.messageId)
+    }
+    const nextForeignUser = run.events.find(event => {
+      if (event.seq <= promptEvent.seq) return false
+      const rpcId = userRpcId(event)
+      if (rpcId === null) return false
+      if (ownedRpcIds.has(rpcId)) return false
+      const messageId = stringAt(event.data, 'id')
+      return messageId === null || !ownedMessageIds.has(messageId)
+    })
+    return run.events.filter(event => event.seq > promptEvent.seq
+      && (nextForeignUser === undefined || event.seq < nextForeignUser.seq))
   }
 
   async historyAfter(sessionId: string, baselineSeq: number): Promise<RpcEvent[]> {
@@ -101,10 +123,12 @@ export class RunReconciler {
   }
 
   async finalize(run: RunRecord, status: Exclude<RunStatus, 'running' | 'unknown'>, error: string | null): Promise<void> {
+    const finishedAt = new Date().toISOString()
     run.snapshot.status = status
     run.snapshot.error = error
     delete run.snapshot.attentionReason
-    run.snapshot.finishedAt = new Date().toISOString()
+    run.snapshot.finishedAt = finishedAt
+    run.snapshot.lastProgressAt = finishedAt
     this.activeSessions.delete(activeKey(run))
     await this.restorePermission(run)
   }

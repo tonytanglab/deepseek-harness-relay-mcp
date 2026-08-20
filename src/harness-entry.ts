@@ -1,6 +1,5 @@
 import { unlink } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { join, resolve } from 'node:path'
 import { InProcessApiClient, toFetchHandler } from '@deepseek-ai/dsh-host-apiproxy'
 import type { Context } from '@deepseek-ai/cordis'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
@@ -10,7 +9,7 @@ import {
   RelayEndpointPublisher,
   deriveAuthorityId,
   normalizeHostIdentity,
-  resolveAuthorityStatePaths,
+  type AuthorityOwnerLease,
 } from './authority/index.js'
 import { resolveConfig } from './config.js'
 import { EventMonitoringFacade, type EventMonitoringNotice } from './event-monitoring/index.js'
@@ -23,7 +22,6 @@ import {
   createHarnessPlugin,
   preflightHarnessProfile,
   type EmbeddedRelayAdapters,
-  type HarnessPluginConfig,
   type HarnessPluginContext,
 } from './harness-plugin/index.js'
 import { McpHttpFacade, TokenStoreFacade } from './mcp-http/index.js'
@@ -35,6 +33,26 @@ import {
   type InProcessPermissionPresetPort,
 } from './permission-gateway/index.js'
 import { RelayFacade } from './relay-broker/index.js'
+import {
+  RelayRuntimeFacade,
+  RelayRuntimePathError,
+  type RelayRuntimePaths,
+  type RelayStatusError,
+  type RelayStatusWriteInput,
+} from './relay-runtime/index.js'
+
+class RelayStartupError extends Error {
+  readonly name = 'RelayStartupError'
+
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly remediation: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options)
+  }
+}
 
 interface NativeSessionStore {
   get(id: ReturnType<typeof SessionId>): Session | undefined
@@ -73,29 +91,56 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
     const gateway = createInProcessHarnessGateway(client as unknown as InProcessApiClientPort, permissions, dispatch)
     return { gateway, permissions }
   },
-  async startAuthority(ctx, config, adapters) {
-    const profile = process.env.DSH_PROFILE ?? 'web'
-    const preflight = preflightHarnessProfile({
-      profile,
-      availableServices: ['apiProxy', 'webServer', 'sessions', 'permissionPresets'],
-    })
-    if (!preflight.ready) throw new Error(`${preflight.code}: ${preflight.message}`)
-    if (ctx.webServer.host !== '127.0.0.1') throw new Error('DSH Relay embedded MCP requires the Harness WebServer to bind 127.0.0.1')
+  async startAuthority(ctx, config, adapters, options) {
+    const runtime = new RelayRuntimeFacade()
+    const defaultPaths = runtime.resolve({ mode: 'embedded', env: process.env })
+    const profile = defaultPaths.profile
     const hostWebUrl = `http://127.0.0.1:${ctx.webServer.port}/`
     const hostIdentity = normalizeHostIdentity(hostWebUrl)
     const authorityId = deriveAuthorityId('embedded', hostIdentity)
     const instanceId = authorityId
-    const paths = resolveEmbeddedPaths(config, hostIdentity, profile)
-    const lease = await new AuthorityRegistryFacade().acquire({
-      authorityId,
-      mode: 'embedded',
-      hostIdentity,
-      instanceId,
-      recoverStale: true,
-    })
+    let paths: RelayRuntimePaths = defaultPaths
+    let status = runtime.status(defaultPaths)
+    let lease: AuthorityOwnerLease | undefined
+    let unregister: (() => void) | undefined
+    let eventHandle: { dispose(): Promise<void> } | undefined
+    let http: McpHttpFacade | undefined
     try {
+      paths = runtime.resolve({
+        mode: 'embedded',
+        env: process.env,
+        hostIdentity,
+        ...(config.stateDirectory === undefined ? {} : { stateDirectory: config.stateDirectory }),
+        ...(config.tokenFile === undefined ? {} : { tokenFile: config.tokenFile }),
+      })
+      status = runtime.status(paths)
+      await runtime.prepare(paths)
+      await writeRelayStatus(status, lifecycleStatus(paths, authorityId, instanceId, hostIdentity, 'starting', null, null))
+
+      const preflight = preflightHarnessProfile({
+        profile,
+        availableServices: ['apiProxy', 'webServer', 'sessions', 'permissionPresets'],
+      })
+      if (!preflight.ready) throw new RelayStartupError(preflight.code, preflight.message, 'Enable the Harness web profile with the required native services and retry.')
+      if (ctx.webServer.host !== '127.0.0.1') {
+        throw new RelayStartupError(
+          'HARNESS_WEB_BIND_HOST_INVALID',
+          'DSH Relay embedded MCP requires the Harness WebServer to bind 127.0.0.1',
+          'Configure the Harness WebServer to bind loopback only, then retry the web profile.',
+        )
+      }
+
+      lease = await new AuthorityRegistryFacade().acquireWithRetry({
+        authorityId,
+        mode: 'embedded',
+        hostIdentity,
+        instanceId,
+        recoverStale: true,
+      }, { signal: options.signal })
+      await writeRelayStatus(status, lifecycleStatus(paths, authorityId, instanceId, hostIdentity, 'starting', lease.record, null))
+
       const loadedToken = await new TokenStoreFacade().loadOrCreate({
-        tokenFile: config.tokenFile === undefined ? paths.tokenFile : resolve(config.tokenFile),
+        tokenFile: paths.tokenFile,
         environmentVariable: 'DSH_RELAY_TOKEN',
       })
       const relayConfig = resolveConfig({
@@ -113,8 +158,8 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
       eventMonitoring = new EventMonitoringFacade(adapters.gateway, async notice => {
         await projectEventNotice(notice, relay, monitoring, eventMonitoring)
       })
-      const eventHandle = eventMonitoring.start()
-      const http = new McpHttpFacade({
+      eventHandle = eventMonitoring.start()
+      http = new McpHttpFacade({
         token: loadedToken.token,
         allowedHosts: [`127.0.0.1:${ctx.webServer.port}`, `localhost:${ctx.webServer.port}`],
         allowedOrigins: [hostWebUrl.slice(0, -1), `http://localhost:${ctx.webServer.port}`],
@@ -123,10 +168,10 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
         requestsPerMinute: config.rateLimitPerMinute,
         drainTimeoutMs: config.drainTimeoutMs,
       }, principal => createServer(relay, relayConfig, monitoring, principal))
-      const unregister = ctx.webServer.register({
+      unregister = ctx.webServer.register({
         kind: 'exact',
         path: config.route,
-        handler: (req, res) => http.handle(req, res),
+        handler: (req, res) => http?.handle(req, res) ?? Promise.resolve(),
       })
       await new RelayEndpointPublisher(paths.endpointDescriptorFile).publish({
         authorityId,
@@ -136,38 +181,170 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
         hostWebUrl,
         ownerEpoch: lease.record.epoch,
       })
+      await verifyPostHandshake(
+        new URL(config.route, hostWebUrl).href,
+        loadedToken.token,
+        'embedded-authority',
+      )
+      await writeRelayStatus(status, lifecycleStatus(paths, authorityId, instanceId, hostIdentity, 'ready', lease.record, null))
       return {
         async disposeInfrastructure({ drainTimeoutMs: _drainTimeoutMs }) {
-          unregister()
-          await eventHandle.dispose()
-          await http.drain()
-          await unlink(paths.endpointDescriptorFile).catch(ignoreMissing)
-          await lease.release()
+          let cleanupError: unknown
+          try {
+            await cleanupEmbeddedInfrastructure({
+              unregister,
+              eventHandle,
+              http,
+              endpointDescriptorFile: paths.endpointDescriptorFile,
+              removeEndpoint: true,
+              lease: undefined,
+            })
+          } catch (error) {
+            cleanupError = error
+          }
+          await tryWriteRelayStatus(status, lifecycleStatus(paths, authorityId, instanceId, hostIdentity, 'stopped', lease?.record ?? null, null))
+          try {
+            await lease?.release()
+          } catch (error) {
+            cleanupError ??= error
+          }
+          if (cleanupError !== undefined) throw cleanupError
         },
       }
     } catch (error) {
-      await lease.release()
+      await tryWriteRelayStatus(status, lifecycleStatus(paths, authorityId, instanceId, hostIdentity, 'failed', lease?.record ?? null, toRelayStatusError(error)))
+      await cleanupEmbeddedInfrastructure({
+        unregister,
+        eventHandle,
+        http,
+        endpointDescriptorFile: paths.endpointDescriptorFile,
+        removeEndpoint: lease !== undefined,
+        lease,
+      }).catch(() => {})
       throw error
     }
   },
 })
 
-function resolveEmbeddedPaths(config: HarnessPluginConfig, hostIdentity: string, profile: string) {
-  const dshHome = process.env.DSH_HOME
-  if (dshHome === undefined || dshHome.trim() === '') throw new Error('DSH_HOME is required for embedded DSH Relay state')
-  const standard = resolveAuthorityStatePaths({
-    mode: 'embedded',
-    hostIdentity,
-    dshHome,
-    profile,
-  })
-  if (config.stateDirectory === undefined) return standard
-  const stateDirectory = resolve(config.stateDirectory)
+function lifecycleStatus(
+  paths: RelayRuntimePaths,
+  authorityId: string,
+  instanceId: string,
+  hostIdentity: string,
+  state: RelayStatusWriteInput['state'],
+  owner: AuthorityOwnerLease['record'] | null,
+  lastError: RelayStatusError | null,
+): RelayStatusWriteInput {
   return {
-    stateDirectory,
-    stateFile: join(stateDirectory, 'state.json'),
-    endpointDescriptorFile: join(stateDirectory, 'relay-endpoint.json'),
-    tokenFile: join(stateDirectory, 'relay-token'),
+    state,
+    authorityId,
+    mode: 'embedded',
+    instanceId,
+    ownerPid: owner?.processId ?? null,
+    processStartedAt: owner?.processStartedAt ?? null,
+    ownerEpoch: owner?.epoch ?? null,
+    hostIdentity,
+    profile: paths.profile,
+    dshHome: paths.dshHome,
+    lastError,
+  }
+}
+
+async function writeRelayStatus(status: { write(input: RelayStatusWriteInput): Promise<unknown> }, input: RelayStatusWriteInput): Promise<void> {
+  await status.write(input)
+}
+
+async function tryWriteRelayStatus(status: { write(input: RelayStatusWriteInput): Promise<unknown> } | undefined, input: RelayStatusWriteInput): Promise<void> {
+  if (status === undefined) return
+  try {
+    await status.write(input)
+  } catch {
+    // A failed status write must never mask the startup error or block cleanup.
+  }
+}
+
+function toRelayStatusError(error: unknown): RelayStatusError {
+  const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+    ? error.code
+    : 'RELAY_START_FAILED'
+  const remediation = error instanceof RelayRuntimePathError
+    ? error.remediation
+    : error instanceof RelayStartupError
+      ? error.remediation
+      : 'Inspect the Relay status and Harness profile configuration, then retry the web profile.'
+  const message = error instanceof Error ? error.message : String(error)
+  return { code, message, remediation }
+}
+
+interface CleanupEmbeddedInfrastructureInput {
+  unregister: (() => void) | undefined
+  eventHandle: { dispose(): Promise<void> } | undefined
+  http: McpHttpFacade | undefined
+  endpointDescriptorFile: string
+  removeEndpoint: boolean
+  lease: AuthorityOwnerLease | undefined
+}
+
+async function cleanupEmbeddedInfrastructure(input: CleanupEmbeddedInfrastructureInput): Promise<void> {
+  let firstError: unknown
+  const attempt = async (operation: () => void | Promise<void>): Promise<void> => {
+    try {
+      await operation()
+    } catch (error) {
+      firstError ??= error
+    }
+  }
+  if (input.unregister !== undefined) await attempt(input.unregister)
+  if (input.eventHandle !== undefined) await attempt(() => input.eventHandle!.dispose())
+  if (input.http !== undefined) await attempt(() => input.http!.drain())
+  if (input.removeEndpoint) await attempt(() => unlink(input.endpointDescriptorFile).catch(ignoreMissing))
+  if (input.lease !== undefined) await attempt(() => input.lease!.release().then(() => undefined))
+  if (firstError !== undefined) throw firstError
+}
+
+async function verifyPostHandshake(url: string, token: string, principal: string): Promise<void> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5_000)
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'mcp-protocol-version': '2025-03-26',
+        'x-dsh-relay-principal': principal,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'relay-startup-handshake',
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'dsh-relay-startup', version: '1.0.0' },
+        },
+      }),
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      throw new RelayStartupError(
+        'RELAY_POST_HANDSHAKE_FAILED',
+        `Relay POST handshake returned HTTP ${response.status}`,
+        'Verify that the Harness WebServer route is registered and accepts authenticated loopback POST requests.',
+      )
+    }
+    await response.arrayBuffer()
+  } catch (error) {
+    if (error instanceof RelayStartupError) throw error
+    throw new RelayStartupError(
+      'RELAY_POST_HANDSHAKE_FAILED',
+      `Relay POST handshake failed: ${error instanceof Error ? error.message : String(error)}`,
+      'Verify that the Harness WebServer is listening on loopback and the Relay route is reachable.',
+      { cause: error },
+    )
+  } finally {
+    clearTimeout(timeout)
   }
 }
 

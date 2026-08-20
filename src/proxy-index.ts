@@ -1,22 +1,15 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { RelayRuntimeFacade } from './relay-runtime/index.js'
 import { StdioProxyFacade } from './stdio-proxy/index.js'
 
-const descriptorFile = resolve(process.env.DSH_RELAY_ENDPOINT_DESCRIPTOR?.trim() || defaultDescriptor())
+const runtimePaths = new RelayRuntimeFacade().resolve({ mode: 'embedded', env: process.env })
 const proxy = new StdioProxyFacade({
-  descriptorFile,
+  descriptorFile: runtimePaths.endpointDescriptorFile,
+  statusFile: runtimePaths.statusFile,
   clientPrincipalId: process.env.DSH_RELAY_CLIENT_PRINCIPAL_ID?.trim() || 'local-user',
   requestTimeoutMs: integer(process.env.DSH_RELAY_PROXY_TIMEOUT_MS, 35_000, 1_000, 120_000),
 })
 await proxy.connect(new StdioServerTransport())
-
-function defaultDescriptor(): string {
-  const dshHome = process.env.DSH_HOME?.trim() || join(homedir(), '.dsh')
-  const profile = process.env.DSH_PROFILE?.trim() || 'web'
-  if (!/^[A-Za-z0-9._-]+$/u.test(profile)) throw new Error(`invalid DSH_PROFILE: ${profile}`)
-  return join(dshHome, 'plugins', 'dsh-relay', profile, 'relay-endpoint.json')
-}
 
 function integer(raw: string | undefined, fallback: number, min: number, max: number): number {
   if (raw === undefined) return fallback

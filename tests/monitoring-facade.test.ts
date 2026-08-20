@@ -66,6 +66,14 @@ test('projects every current RunSnapshot status without defining a parallel stat
   }
 })
 
+test('uses the durable last progress timestamp for a live run summary', () => {
+  const facade = new MonitoringFacade()
+  const summary = facade.project({ ...snapshot('running'), lastProgressAt: finishedAt })
+  assert.equal(summary.updatedAt, finishedAt)
+  assert.equal(summary.elapsedMs, 5000)
+  assert.equal(summary.nextAction, 'wait')
+})
+
 test('maps every attention reason to an executable next action', () => {
   const facade = new MonitoringFacade()
   const expected = new Map<AttentionReason, string>([

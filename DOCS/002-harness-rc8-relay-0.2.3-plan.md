@@ -1,6 +1,6 @@
 # Harness rc.8 / Relay MCP 0.2.3 修复与后续演进计划
 
-状态：主进程审定，待实施
+状态：已实施并通过主进程验收；用户明确授权本次跳过 AI-CDL 前置门
 
 审定日期：2026-08-20
 
@@ -254,3 +254,25 @@ doctor 至少报告：
 4. proxy 不健康时采用“doctor-only tools/list + 恢复通知”，还是引入构建期生成的完整工具清单？0.2.3 实施前必须二选一并写契约测试。
 5. `imageLimits` 投影缺失时，本地 fallback 的具体优先级和 doctor 表达应如何固定？
 6. 本次 steer 后完成却仍 running 的精确边界错误位于 run 事件归属、session/list 覆盖还是状态持久化合并；实施 P0-5 前用脱敏事件夹具锁定。
+
+## 10. 0.2.3 实施与验收结果
+
+2026-08-20 已按 P0-1 → P0-6 顺序完成实施，结论如下：
+
+- 新增 `relay-runtime` 模块根出口，embedded 与 stdio proxy 统一解析 home、profile、state、endpoint、status 和 token 路径；未设置 `DSH_HOME` 时真实回退到用户目录 `.dsh`。
+- `relay-status.json` v1 已覆盖 `starting | ready | failed | stopped`，使用原子 UTF-8 写入并执行凭证脱敏；endpoint 继续保持 descriptor v1。
+- authority 仅对 `AUTHORITY_OWNED` 有界退避，每次重读 owner 并重探 PID；alive/unknown 均不接管，dead owner 才按既有 fencing 增加 epoch；Cordis 卸载可在等待中通过 AbortSignal 立即取消。
+- stdio proxy 已改为本地 MCP 优先，故障时保留本地 `doctor`，远端工具统一返回 `RELAY_ROUTE_UNAVAILABLE`；恢复或 owner epoch 变化时，同一 proxy 自动重连并发送 `tools/list_changed`。
+- durable history 的 `turn/end` 已成为终态真源；stale `session.list.running`、steer 边界、晚到最终消息、interrupted、summary 时间和持久重读均有回归测试。
+- rc.8 合同夹具覆盖 `host.describe.home`、`imageLimits`、终态 reason、assistant content/interrupted 和 prompt 响应；升级交叠测试覆盖旧 owner 退出、新 owner epoch +1、endpoint/status 对账和同一 proxy 恢复。
+
+主进程质量门：
+
+1. `pnpm test`：143/143 通过；
+2. `pnpm run build`：通过；
+3. `pnpm run test:mcp`：通过；
+4. `pnpm run check:package`：通过，206 个发布文件、4,647,898 字节；
+5. Harness `0.1.0-rc.8` 默认 home 的真实 `web` profile 已安装 `harness-relay-mcp@0.2.3` 并重启；
+6. 真实 sidecar 为 `ready`，owner epoch 从旧生命周期增长到 3，endpoint epoch 对账一致，POST 启动握手通过；
+7. 未设置 `DSH_HOME`/`DSH_PROFILE` 的真实 stdio proxy doctor 返回 `ok: true`，远端连接、token 可读性和工具发现均通过；
+8. 事故对应的既有 K3 run 在重启后投影为 `succeeded`，`finishedAt`、非零 `elapsedMs` 和 `nextAction: none` 正确。

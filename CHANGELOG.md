@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.2.2
+
+### 2026-08-20 11:57
+
+- 新增仓库级 `harness-relay` Codex Marketplace，通过 npm 包 `harness-relay-mcp` 分发 `deepseek-harness-relay` 插件，并将 Marketplace 包版本纳入 `version.json` 单一真源同步。
+- 中英文 README 明确区分 Harness 内部 bundle 与 Codex 外部调用层，补充 GitHub Marketplace 安装、升级、新任务加载、只读验证及可直接交给 AI 的安全安装提示词。
+- 增加 Codex Marketplace 发布契约和 Harness 安装边界回归门；Marketplace 文件不进入 npm 发布白名单，不改变包根 `dsh.bundle`、`cordis.patch.yml` 或 Harness `web` profile 的内部安装方式。
+
 ## 0.2.1
 
 ### 2026-08-20 01:52

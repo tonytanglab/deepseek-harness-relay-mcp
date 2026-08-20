@@ -5,6 +5,7 @@ import test from 'node:test'
 
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
   name: string
+  version: string
   main: string
   exports: Record<string, { default?: string } | string>
   bin: Record<string, string>
@@ -12,6 +13,18 @@ const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.
   scripts: Record<string, string>
   peerDependencies: Record<string, string>
   peerDependenciesMeta: Record<string, { optional?: boolean }>
+  dsh: { bundle: { patch: string } }
+}
+
+const marketplace = JSON.parse(readFileSync(new URL('../.agents/plugins/marketplace.json', import.meta.url), 'utf8')) as {
+  name: string
+  interface: { displayName: string }
+  plugins: Array<{
+    name: string
+    source: { source: string; package: string; version: string; registry: string }
+    policy: { installation: string; authentication: string }
+    category: string
+  }>
 }
 
 test('publishes the slash-free Harness Relay MCP identity at the package root', () => {
@@ -21,10 +34,30 @@ test('publishes the slash-free Harness Relay MCP identity at the package root', 
   assert.equal((manifest.exports['./standalone'] as { default?: string }).default, './dist/dsh-relay.mjs')
   assert.equal(manifest.bin['harness-relay-mcp'], './dist/dsh-relay.mjs')
   assert.equal(manifest.bin['harness-relay-mcp-proxy'], './dist/dsh-relay-proxy.mjs')
+  assert.equal(manifest.dsh.bundle.patch, './cordis.patch.yml')
+  assert.equal(manifest.files.includes('.agents/plugins/marketplace.json'), false)
   const patch = readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
   assert.match(patch, /id: harness-relay-mcp/u)
   assert.match(patch, /name: 'harness-relay-mcp'/u)
   assert.doesNotMatch(patch, /name: .*\//u)
+})
+
+test('publishes a repo marketplace that installs the Codex layer from npm', () => {
+  assert.equal(marketplace.name, 'harness-relay')
+  assert.equal(marketplace.interface.displayName, 'Harness Relay')
+  const plugin = marketplace.plugins.find(entry => entry.name === 'deepseek-harness-relay')
+  assert.ok(plugin)
+  assert.deepEqual(plugin.source, {
+    source: 'npm',
+    package: 'harness-relay-mcp',
+    version: manifest.version,
+    registry: 'https://registry.npmjs.org',
+  })
+  assert.deepEqual(plugin.policy, {
+    installation: 'AVAILABLE',
+    authentication: 'ON_INSTALL',
+  })
+  assert.equal(plugin.category, 'Productivity')
 })
 
 test('uses an explicit publication whitelist and validates its byte budget', () => {
@@ -64,6 +97,7 @@ test('version sync can explicitly adopt the official plugin cachebuster', () => 
   const script = readFileSync(new URL('../scripts/sync-version.mjs', import.meta.url), 'utf8')
   assert.match(script, /--from-plugin/)
   assert.match(script, /adoptPluginVersion \? \[versionFile, packageFile\]/)
+  assert.match(script, /marketplacePlugin\.source\.version = version/)
 })
 
 test('dual-mode Harness peers are versioned but optional for standalone installs', () => {

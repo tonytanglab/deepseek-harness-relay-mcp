@@ -102,15 +102,45 @@ dsh plugin --profile web remove harness-relay-mcp
 
 不要把 Relay 再配置进同一 Harness 的 MCP client，否则会形成 `Harness → Relay → Harness` 递归。
 
-### Codex 插件
+### 安装 Codex 插件
 
-本机 `personal` marketplace 已包含此插件时：
+Codex 插件是外部调用层，不能替代前面的 Harness 内部 bundle。先确认 `dsh --profile web` 已加载 `harness-relay-mcp`，再从本仓库 Marketplace 安装 Codex 插件：
 
 ```powershell
-codex plugin add deepseek-harness-relay@personal
+codex plugin marketplace add tonytanglab/deepseek-harness-relay-mcp
+codex plugin add deepseek-harness-relay@harness-relay
+codex plugin list
 ```
 
-安装后新建一个 Codex 对话，以便 Codex 加载 MCP Server 和 `delegate-to-deepseek-harness` Skill。
+第一条命令登记本项目的 GitHub Marketplace；第二条命令从 npm 获取同版本插件包，并为 Codex 加载 `.mcp.json` 与 `delegate-to-deepseek-harness` Skill。Codex 侧只启动无业务状态的 `dist/dsh-relay-proxy.mjs`，它通过端点描述连接已经运行的 Harness 内部 bundle；这个流程不会修改 DeepSeek Harness 源码、`web` profile 的内部 bundle 配置或 `cordis.patch.yml`。
+
+安装后重启 Codex，并新建一个 Codex 任务，让新任务加载 MCP Server 和 Skill。可在新任务中要求：
+
+```text
+调用 Harness Relay 的 doctor 和 list_workspaces，只做只读检查，确认 Harness Host、Relay 端点和工作区是否可用。
+```
+
+升级仓库 Marketplace 与 Codex 插件时：
+
+```powershell
+codex plugin marketplace upgrade harness-relay
+codex plugin add deepseek-harness-relay@harness-relay
+```
+
+然后再次重启 Codex 并新建任务。不要把 Relay 配置为同一个 Harness 的 MCP client；Codex 插件应连接 Relay proxy，而 Harness 仍通过 `dsh plugin --profile web add harness-relay-mcp` 管理内部 bundle。Codex Marketplace 的官方格式与命令参见 [OpenAI 插件打包文档](https://developers.openai.com/plugins/build/plugins)。
+
+#### 让 AI 分析并协助安装
+
+尚未安装插件的用户可以把下面提示词直接交给具备终端权限的 Codex。AI 应先只读检查环境、说明将发生的改动并获得用户确认，再执行安装；不得修改 DeepSeek Harness 产品源码或把 Relay 配回 Harness MCP client：
+
+```text
+请阅读 https://github.com/tonytanglab/deepseek-harness-relay-mcp/blob/main/README.zh-CN.md 的“安装”章节，协助我安装 Harness Relay MCP。
+先只读检查操作系统、Node.js 版本、dsh、Codex CLI、Harness web profile 和 127.0.0.1:3080，不要修改任何文件。
+列出检测结果、缺失依赖、拟执行命令和影响范围，获得我确认后再操作。
+Harness 侧只能使用 dsh plugin --profile web add harness-relay-mcp 安装内部 bundle，不修改 DeepSeek Harness 源码，不把 Relay 添加为 Harness MCP client。
+Codex 侧使用仓库 Marketplace tonytanglab/deepseek-harness-relay-mcp，安装 deepseek-harness-relay@harness-relay。
+安装后验证 dsh --profile web --dump-config、codex plugin list，并提醒我重启 Codex、新建任务后运行 doctor 与 list_workspaces。遇到错误时停止并报告原始错误，不扩大权限、不删除现有配置。
+```
 
 ### 本地开发
 

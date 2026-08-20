@@ -102,15 +102,46 @@ dsh plugin --profile web remove harness-relay-mcp
 
 Do not configure Relay into the same Harness MCP client, which would create a `Harness → Relay → Harness` recursion.
 
-### Codex plugin
+### Install the Codex plugin
 
-When the local `personal` marketplace contains this plugin:
+The Codex plugin is an external caller layer; it does not replace the Harness bundle above. First confirm that `dsh --profile web` has loaded `harness-relay-mcp`, then install the Codex plugin from this repository's marketplace:
 
 ```powershell
-codex plugin add deepseek-harness-relay@personal
+codex plugin marketplace add tonytanglab/deepseek-harness-relay-mcp
+codex plugin add deepseek-harness-relay@harness-relay
+codex plugin list
 ```
 
-Start a new Codex thread after installation so Codex loads the MCP server and the `delegate-to-deepseek-harness` Skill.
+The first command registers this project's GitHub marketplace. The second fetches the same-version plugin package from npm and loads its `.mcp.json` plus the `delegate-to-deepseek-harness` Skill in Codex. The Codex layer starts only the stateless `dist/dsh-relay-proxy.mjs`, which discovers and connects to the running Harness bundle through its endpoint descriptor. It does not modify DeepSeek Harness source, the internal bundle configuration of the `web` profile, or `cordis.patch.yml`.
+
+Restart Codex after installation and start a new Codex task so the new task loads the MCP server and Skill. In that task, ask:
+
+```text
+Call Harness Relay doctor and list_workspaces in read-only mode to verify the Harness Host, Relay endpoint, and workspace registry.
+```
+
+To refresh the repository marketplace and reinstall the Codex plugin:
+
+```powershell
+codex plugin marketplace upgrade harness-relay
+codex plugin add deepseek-harness-relay@harness-relay
+```
+
+Restart Codex and create another new task after the upgrade. Never configure Relay as an MCP client of the same Harness instance. Codex connects to the Relay proxy, while Harness continues to manage its internal bundle through `dsh plugin --profile web add harness-relay-mcp`. See the [OpenAI plugin packaging documentation](https://developers.openai.com/plugins/build/plugins) for the official marketplace format and commands.
+
+#### Ask AI to analyze and assist with installation
+
+Before the plugin is installed, users can give the following prompt to Codex with terminal access. The AI should inspect the environment read-only, explain the proposed changes, and obtain confirmation before installing. It must not modify the DeepSeek Harness product source or configure Relay back into the Harness MCP client:
+
+```text
+Read the Installation section at https://github.com/tonytanglab/deepseek-harness-relay-mcp/blob/main/README.md and help me install Harness Relay MCP.
+First inspect the operating system, Node.js version, dsh, Codex CLI, Harness web profile, and 127.0.0.1:3080 without modifying files.
+Report the checks, missing dependencies, exact commands, and impact. Wait for my confirmation before making changes.
+On the Harness side, install the internal bundle only with dsh plugin --profile web add harness-relay-mcp. Do not modify DeepSeek Harness source and do not add Relay as a Harness MCP client.
+On the Codex side, add the tonytanglab/deepseek-harness-relay-mcp repository marketplace and install deepseek-harness-relay@harness-relay.
+After installation, verify dsh --profile web --dump-config and codex plugin list, then remind me to restart Codex, create a new task, and run doctor and list_workspaces.
+If any command fails, stop and report the original error. Do not broaden permissions or delete existing configuration.
+```
 
 ### Local development
 

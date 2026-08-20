@@ -1,6 +1,6 @@
 {
   "name": "harness-relay-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Delegate and monitor DeepSeek Harness work from any MCP agent.",
   "author": "TonyTangLab",
   "repository": {

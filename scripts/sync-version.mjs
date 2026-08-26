@@ -1,39 +1,53 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { writeFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { readJsonFileStrict } from './strict-utf8.mjs'
 
-const checkOnly = process.argv.includes('--check')
-const adoptPluginVersion = process.argv.includes('--from-plugin')
-const versionFile = new URL('../version.json', import.meta.url)
-const packageFile = new URL('../package.json', import.meta.url)
-const pluginFile = new URL('../.codex-plugin/plugin.json', import.meta.url)
-const marketplaceFile = new URL('../.agents/plugins/marketplace.json', import.meta.url)
+export async function syncVersions(root = process.env.DSH_RELAY_SYNC_VERSION_ROOT ?? fileURLToPath(new URL('../', import.meta.url)), options = {}) {
+  const checkOnly = options.checkOnly ?? process.argv.includes('--check')
+  const adoptPluginVersion = options.adoptPluginVersion ?? process.argv.includes('--from-plugin')
+  const versionFile = resolve(root, 'version.json')
+  const packageFile = resolve(root, 'package.json')
+  const pluginFile = resolve(root, '.codex-plugin', 'plugin.json')
+  const marketplaceFile = resolve(root, '.agents', 'plugins', 'marketplace.json')
 
-if (checkOnly && adoptPluginVersion) throw new Error('--check and --from-plugin cannot be combined')
+  if (checkOnly && adoptPluginVersion) throw new Error('--check and --from-plugin cannot be combined')
 
-const sourceFile = adoptPluginVersion ? pluginFile : versionFile
-const { version } = JSON.parse(await readFile(sourceFile, 'utf8'))
-if (typeof version !== 'string' || version.length === 0) throw new Error(`${sourceFile.pathname} must contain a non-empty version`)
+  const sourceFile = adoptPluginVersion ? pluginFile : versionFile
+  const { version } = await readJsonFileStrict(sourceFile)
+  if (typeof version !== 'string' || version.length === 0) throw new Error(`${sourceFile} must contain a non-empty version`)
 
-const targetFiles = adoptPluginVersion ? [versionFile, packageFile] : [packageFile, pluginFile]
-for (const file of targetFiles) {
-  const value = JSON.parse(await readFile(file, 'utf8'))
+  const targetFiles = adoptPluginVersion ? [versionFile, packageFile] : [packageFile, pluginFile]
+  const changed = []
+  for (const file of targetFiles) {
+    const value = await readJsonFileStrict(file)
+    if (checkOnly) {
+      if (value.version !== version) throw new Error(`${file} has ${String(value.version)}, expected ${version}`)
+      continue
+    }
+    if (value.version === version) continue
+    value.version = version
+    await writeFile(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+    changed.push(file)
+  }
+
+  const marketplace = await readJsonFileStrict(marketplaceFile)
+  const marketplacePlugin = marketplace.plugins?.find(entry => entry?.name === 'deepseek-harness-relay')
+  if (marketplacePlugin?.source?.source !== 'npm' || marketplacePlugin.source.package !== 'harness-relay-mcp') {
+    throw new Error(`${marketplaceFile} must expose deepseek-harness-relay from the harness-relay-mcp npm package`)
+  }
   if (checkOnly) {
-    if (value.version !== version) throw new Error(`${file.pathname} has ${String(value.version)}, expected ${version}`)
-    continue
+    if (marketplacePlugin.source.version !== version) {
+      throw new Error(`${marketplaceFile} has ${String(marketplacePlugin.source.version)}, expected ${version}`)
+    }
+  } else if (marketplacePlugin.source.version !== version) {
+    marketplacePlugin.source.version = version
+    await writeFile(marketplaceFile, `${JSON.stringify(marketplace, null, 2)}\n`, 'utf8')
+    changed.push(marketplaceFile)
   }
-  value.version = version
-  await writeFile(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+  return { changed }
 }
 
-const marketplace = JSON.parse(await readFile(marketplaceFile, 'utf8'))
-const marketplacePlugin = marketplace.plugins?.find(entry => entry?.name === 'deepseek-harness-relay')
-if (marketplacePlugin?.source?.source !== 'npm' || marketplacePlugin.source.package !== 'harness-relay-mcp') {
-  throw new Error(`${marketplaceFile.pathname} must expose deepseek-harness-relay from the harness-relay-mcp npm package`)
-}
-if (checkOnly) {
-  if (marketplacePlugin.source.version !== version) {
-    throw new Error(`${marketplaceFile.pathname} has ${String(marketplacePlugin.source.version)}, expected ${version}`)
-  }
-} else if (marketplacePlugin.source.version !== version) {
-  marketplacePlugin.source.version = version
-  await writeFile(marketplaceFile, `${JSON.stringify(marketplace, null, 2)}\n`, 'utf8')
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await syncVersions()
 }

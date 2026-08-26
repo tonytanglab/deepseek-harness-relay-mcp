@@ -207,7 +207,7 @@ Then dispatch a read-only Kimi K3/MAX review:
 }
 ```
 
-Store the returned `runId`, `sessionId`, and `webUrl`. Poll without blocking indefinitely:
+Store the returned `runId`, `sessionId`, and `webUrl`. Keep calling `wait_run` until a terminal status. Each call waits at most 30 seconds; a timeout with `status: running` is a slice, not completion. If `hostPollContract.hostMustCallWaitRunAgain` is true, call `wait_run` again immediately. Sharing `webUrl` is not completion:
 
 ```json
 {
@@ -318,7 +318,7 @@ DSH Relay invokes the native Harness `/permission` command through `commands/exe
 | `get_run_summary` | Project a run into stable status, model, permission, elapsed-time, and next-action fields. |
 | `status_run` | Deprecated compatibility alias; migrate to `get_run` before removal in 0.3.0. |
 | `open_run` | Open the native Harness Web session URL. |
-| `wait_run` | Wait for progress for up to 30 seconds. |
+| `wait_run` | Wait up to 30 seconds for progress. A timeout is a slice; if `hostPollContract.hostMustCallWaitRunAgain` is true, call `wait_run` again. Do not conclude the host turn while the run is still running. |
 | `list_runs` | Reconcile and list persisted runs. |
 | `get_operation` | Read one durable idempotent start, reply, steer, or cancel operation. |
 | `reconcile_operation` | Resolve an uncertain operation from durable Harness events without duplicate submission. |

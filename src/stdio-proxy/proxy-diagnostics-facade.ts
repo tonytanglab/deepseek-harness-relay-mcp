@@ -1,5 +1,5 @@
-import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { readTextFileStrict } from '../strict-utf8.js'
 import { RelayStatusFacade, type RelayStatusDocument } from '../relay-runtime/index.js'
 import { readEndpointDescriptor } from './descriptor-reader.js'
 import type {
@@ -85,7 +85,9 @@ export class ProxyDiagnosticsFacade {
 
     let rawToken: string
     try {
-      rawToken = await readFile(descriptor.tokenFilePath, { encoding: 'utf8' })
+      const text = await readTextFileStrict(descriptor.tokenFilePath)
+      if (text === null) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+      rawToken = text
     } catch (error) {
       return inspection(status, descriptor, null, { exists: !isCode(error, 'ENOENT'), readable: false, valid: false }, failure(
         'TOKEN_UNREADABLE',

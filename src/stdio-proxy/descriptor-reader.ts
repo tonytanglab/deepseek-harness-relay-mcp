@@ -1,9 +1,15 @@
-import { readFile } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
+import { readTextFileStrict } from '../strict-utf8.js'
 import type { RelayEndpointDescriptor } from './types.js'
 
 export async function readEndpointDescriptor(path: string): Promise<RelayEndpointDescriptor> {
-  const parsed = JSON.parse(await readFile(path, { encoding: 'utf8' })) as unknown
+  const text = await readTextFileStrict(path)
+  if (text === null) {
+    const error = new Error(`missing DSH Relay endpoint descriptor: ${path}`) as Error & { code: string }
+    error.code = 'ENOENT'
+    throw error
+  }
+  const parsed = JSON.parse(text) as unknown
   if (!isRecord(parsed) || parsed.schemaVersion !== 1 || parsed.mode !== 'embedded') throw new Error('invalid DSH Relay endpoint descriptor')
   if ('token' in parsed || 'authorization' in parsed) throw new Error('endpoint descriptor must not contain credentials')
   const descriptor: RelayEndpointDescriptor = {

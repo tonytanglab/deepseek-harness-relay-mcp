@@ -1,13 +1,14 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { access, mkdir, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
+import { readTextFileStrict } from './strict-utf8.mjs'
 
 const pluginRoot = fileURLToPath(new URL('../', import.meta.url))
 const runtimeRoot = fileURLToPath(new URL('../.runtime/', import.meta.url))
 const monitorFile = new URL('../.runtime/dual-review.json', import.meta.url)
 const continueFile = new URL('../.runtime/continue', import.meta.url)
-const prompt = process.env.DSH_RELAY_REVIEW_TASK ?? await readFile(new URL('../.runtime/review-task.txt', import.meta.url), 'utf8')
+const prompt = process.env.DSH_RELAY_REVIEW_TASK ?? await readTextFileStrict(new URL('../.runtime/review-task.txt', import.meta.url))
 if (prompt.trim() === '') throw new Error('DSH_RELAY_REVIEW_TASK is required')
 
 await mkdir(runtimeRoot, { recursive: true })

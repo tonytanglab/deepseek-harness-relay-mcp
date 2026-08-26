@@ -78,6 +78,8 @@ export class RelayFacade {
         operations: this.operations.size,
         permissionLeases: this.permissionLeases.size,
         recoveryWarning: this.stateStore.recoveryWarning,
+        locks: await this.stateStore.inspectLockState(),
+        sensitiveFilePermissions: await this.stateStore.checkFilePermissions(),
       },
     }
   }
@@ -394,7 +396,7 @@ export class RelayFacade {
     const deadline = Date.now() + Math.min(this.config.rpcTimeoutMs, 10_000)
     let messageId: string | null = null
     while (Date.now() <= deadline) {
-      run.events = mergeEvents(run.events, await this.reconciler.historyAfter(run.snapshot.sessionId, run.baselineSeq))
+      run.events = mergeEvents(run.events, await this.reconciler.historySince(run))
       const message = run.events.find(event => userRpcId(event) === operation.rpcId)
       messageId = message === undefined ? null : stringAt(message.data, 'id')
       if (messageId !== null) break
@@ -464,7 +466,7 @@ export class RelayFacade {
         && operation.state !== 'acknowledged' && operation.state !== 'reconciled' && operation.state !== 'failed') {
         await this.journal.transition(operation, 'reconciled', { messageId: run.snapshot.promptMessageId, error: null })
       } else if (operation.kind === 'steer' && operation.state !== 'acknowledged' && operation.state !== 'reconciled' && operation.state !== 'failed') {
-        const events = await this.reconciler.historyAfter(run.snapshot.sessionId, run.baselineSeq)
+        const events = await this.reconciler.historySince(run)
         const message = events.find(event => userRpcId(event) === operation.rpcId)
         if (message !== undefined) await this.journal.transition(operation, 'reconciled', { messageId: stringAt(message.data, 'id'), error: null })
       } else if (operation.kind === 'cancel' && run.snapshot.status !== 'running'

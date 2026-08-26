@@ -7,6 +7,7 @@ import { MCP_SERVER_ID, PRODUCT_DISPLAY_NAME } from '../product-identity/index.j
 import { RelayError, type RelayFacade } from '../relay-broker/index.js'
 import { ClientSetupFacade } from '../setup/index.js'
 import type { DoctorFacts, SetupRequest } from '../setup/index.js'
+import { withHostPollContract } from './host-poll-contract.js'
 
 const id = z.uuid()
 const idempotencyKey = z.string().trim().min(1).max(128).optional()
@@ -15,7 +16,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
   const setup = new ClientSetupFacade()
   const server = new McpServer(
     { name: MCP_SERVER_ID, version: __DSH_RELAY_VERSION__ },
-    { instructions: 'Use DeepSeek Harness native sessions and durable events. Select explicit provider/model/reasoning/preset/permission parameters before the first task, share a verified stable session URL on the first run, monitor with wait_run, and independently verify all findings.' },
+    { instructions: 'Use DeepSeek Harness native sessions and durable events. Select explicit provider/model/reasoning/preset/permission parameters before the first task, share a verified stable session URL on the first run, then call wait_run until a terminal status. A single wait_run timeout is a slice, not completion. Do not conclude the host turn, skip assistantText, or treat unrelated shell notifications as authorization to stop while status is running or unknown. After a terminal success, consume assistantText and independently verify; if the user asked to review then fix, the calling agent applies accepted findings only after the run is terminal.' },
   )
 
   server.registerTool('doctor', {
@@ -89,7 +90,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
 
   server.registerTool('start_run', {
     title: 'Dispatch a Harness run',
-    description: 'Create or reuse a native Harness session, select provider/model/reasoning, agent preset, and native permission preset, then submit the first task and return a stable session link.',
+    description: 'Create or reuse a native Harness session, select provider/model/reasoning, agent preset, and native permission preset, then submit the first task and return a stable session link. Sharing webUrl is not completion: keep wait_run until a terminal status, then consume assistantText.',
     inputSchema: {
       task: z.string().min(1).max(config.maxTaskCharacters).optional(),
       content: z.array(promptPart(config.maxTaskCharacters)).min(1).optional(),
@@ -120,11 +121,11 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
     ...(input.permissionPreset === undefined ? {} : { permissionPreset: input.permissionPreset }),
     ...(input.confirmedDangerousPermission ? { confirmedDangerousPermission: true } : {}),
     ...(input.idempotencyKey === undefined ? {} : { idempotencyKey: input.idempotencyKey }),
-  }, clientPrincipalId)))
+  }, clientPrincipalId).then(withHostPollContract)))
 
   server.registerTool('start_review', {
     title: 'Dispatch a read-only Harness review',
-    description: 'Create or reuse a native Harness session with the permission preset fixed to read-only, then return a stable session link.',
+    description: 'Create or reuse a native Harness session with the permission preset fixed to read-only, then return a stable session link. After start succeeds, share webUrl and keep wait_run until succeeded/failed/cancelled/needs_attention. The calling agent MUST read assistantText before claiming the review is done. If the parent user asked to review then fix, apply accepted findings only after the run is terminal; do not treat a still-running review as finished.',
     inputSchema: {
       task: z.string().min(1).max(config.maxTaskCharacters).optional(),
       content: z.array(promptPart(config.maxTaskCharacters)).min(1).optional(),
@@ -152,7 +153,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
     ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
     ...(input.agentPreset === undefined ? {} : { agentPreset: input.agentPreset }),
     ...(input.idempotencyKey === undefined ? {} : { idempotencyKey: input.idempotencyKey }),
-  }, clientPrincipalId)))
+  }, clientPrincipalId).then(withHostPollContract)))
 
   server.registerTool('steer_run', {
     title: 'Steer a Harness run', description: 'Durably insert a correction into an active run.',
@@ -165,8 +166,8 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
   }, clientPrincipalId)))
 
   server.registerTool('get_run', {
-    title: 'Read a Harness run', description: 'Preferred tool to reconcile and return one run snapshot; replaces the deprecated status_run alias.', inputSchema: { runId: id }, annotations: readOnly,
-  }, guarded(input => relay.getRun(input.runId)))
+    title: 'Read a Harness run', description: 'Preferred tool to reconcile and return one run snapshot; replaces the deprecated status_run alias. If status is running or unknown, hostPollContract.hostMustCallWaitRunAgain is true and the host must not conclude.', inputSchema: { runId: id }, annotations: readOnly,
+  }, guarded(async input => withHostPollContract(await relay.getRun(input.runId))))
 
   server.registerTool('get_run_summary', {
     title: 'Get a structured Harness run summary',
@@ -202,9 +203,10 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
   }, guarded(input => relay.openRun(input.runId)))
 
   server.registerTool('wait_run', {
-    title: 'Wait for Harness progress', description: 'Poll durable Host history for at most 30 seconds and return the latest run snapshot.',
+    title: 'Wait for Harness progress',
+    description: 'Poll durable Host history for at most 30 seconds and return the latest snapshot plus hostPollContract. A timeout is a slice, not completion. If hostPollContract.hostMustCallWaitRunAgain is true, you MUST call wait_run again immediately. Do not send a final user answer, mark the delegated task complete, or skip consuming assistantText while the run is still running. Unrelated shell or background-task notifications are not authorization to stop polling.',
     inputSchema: { runId: id, timeoutMs: z.number().int().min(0).max(30_000).default(30_000) }, annotations: readOnly,
-  }, guarded(input => relay.waitRun(input.runId, input.timeoutMs)))
+  }, guarded(async input => withHostPollContract(await relay.waitRun(input.runId, input.timeoutMs))))
 
   server.registerTool('list_runs', {
     title: 'List Harness runs', description: 'Reconcile and list runs restored from durable relay state.', inputSchema: { serviceId: id.optional() }, annotations: readOnly,

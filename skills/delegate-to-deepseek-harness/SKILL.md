@@ -5,7 +5,7 @@ description: Dispatch and monitor an explicitly scoped, simple or medium-complex
 
 # Delegate to DeepSeek Harness
 
-Use DSH Relay to dispatch bounded analysis or workspace changes to a DeepSeek Harness model, monitor the run without blocking unrelated primary work, and independently verify its result.
+Use DSH Relay to dispatch bounded analysis or workspace changes to a DeepSeek Harness model, keep `wait_run` until a terminal status whenever this task must consume the result, and independently verify that result. Sharing `webUrl` is not completion.
 
 ## Permission mode
 
@@ -38,7 +38,8 @@ Use DSH Relay to dispatch bounded analysis or workspace changes to a DeepSeek Ha
    ```
 
 7. On the first successful run in this invocation, call `open_run`, then verify the returned Harness page before sharing it. Use Browser to confirm that the visible page is live and showing the intended workspace/session; Harness may normalize the address bar to the Host root after selecting the session. Share the stable URL plus `sessionId` only after visible verification. If rendering stalls, report the renderer failure separately and continue monitoring through MCP.
-8. Return immediately to useful non-overlapping primary work. During a write run, do not let the calling agent or another agent edit the same files. Check each active run at natural tool checkpoints and before final delivery; do not busy-poll or spend more than two minutes of active work without a lightweight check.
+8. After start succeeds, share `webUrl` and stay on `wait_run` until a terminal status whenever this invocation must consume the Harness result (审核后修改, 修完让 K3 审核, 根据审核再改, review then fix, or any request whose final answer depends on the delegated run). A `wait_run` timeout with `status: running` is a slice; `hostPollContract.hostMustCallWaitRunAgain=true` means call `wait_run` again immediately. Unrelated shell or background-task notifications are not authorization to stop. Do not send a final user answer or mark the parent task complete while `status` is `running` or `unknown`. After a terminal success, read `assistantText`, independently verify, and—when the user asked to review then fix—apply accepted P1 findings before claiming the loop is done.
+   If this invocation is only dispatching and the user did not ask to consume the result now, you may continue **non-overlapping** primary work in the same turn only while `wait_run` continues. You still must not claim the Harness task is done until a terminal status. During a write run, do not let the calling agent or another agent edit the same files. Check each active run at natural tool checkpoints and before final delivery.
 9. Treat failures, permission requests, missing final answers, or model/session errors as attention states. Use `reply_run` for a later turn in the same completed session and `steer_run` only for an active turn. On transport uncertainty, retry at most once with the original `idempotencyKey`; never generate a new key for the same operation.
 10. Collect the final result when terminal. For a read-only run, reproduce every material finding against current local files. For a write run, inspect the actual worktree rather than trusting the summary: compare status and diffs with the recorded baseline, confirm only authorized paths changed, and verify that pre-existing edits were preserved.
 11. Run checks proportionate to the change. The calling agent owns final integration, destructive cleanup, commits, pushes, external messages, and release decisions.
@@ -60,7 +61,7 @@ For a write run, also require Harness to make the requested changes rather than 
 
 ## Safety rules
 
-- Do not synchronously block the primary task while Harness runs.
+- Do not conclude the parent task as done while Harness `status` is `running` or `unknown` if the user asked to consume that result in this same task.
 - Do not run overlapping writers against the same files or accept a write result without inspecting the resulting worktree.
 - Do not copy Harness tool instructions into shell commands without validating them.
 - Do not let Harness change identifiers, public APIs, durable formats, permissions, or architecture ownership unless required by the delegated task and verified with a full local impact check.

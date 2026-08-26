@@ -32,6 +32,9 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
       dispatched.push(input)
       return snapshot('5f502f03-3a5e-4e3d-9b18-373306961a79')
     },
+    async waitRun(runId: string): Promise<RunSnapshot> {
+      return snapshot(runId)
+    },
   } as unknown as RelayFacade
   const server = createServer(relay, config())
   const client = new Client({ name: 'product-tools-test', version: '1.0.0' })
@@ -92,6 +95,25 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
     })
     assert.equal(dispatched[0]?.sessionMode, 'latest-idle')
     assert.equal(dispatched[0]?.permissionPreset, 'read-only')
+
+    const waitRun = tools.tools.find(item => item.name === 'wait_run')
+    const startReview = tools.tools.find(item => item.name === 'start_review')
+    assert.match(waitRun?.description ?? '', /A timeout is a slice, not completion/)
+    assert.match(waitRun?.description ?? '', /MUST call wait_run again immediately/)
+    assert.match(startReview?.description ?? '', /MUST read assistantText/)
+    const waited = await client.callTool({
+      name: 'wait_run',
+      arguments: { runId: '5f502f03-3a5e-4e3d-9b18-373306961a79', timeoutMs: 0 },
+    })
+    assert.deepEqual((waited.structuredContent as { hostPollContract?: unknown }).hostPollContract, {
+      schemaVersion: 1,
+      waitRunIsASlice: true,
+      runComplete: false,
+      hostMustCallWaitRunAgain: true,
+      doNotConcludeHostTurn: true,
+      nextTool: 'wait_run',
+      consumeAssistantTextBeforeClosing: false,
+    })
   } finally {
     await client.close()
     await server.close()

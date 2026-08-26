@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import { decodeUtf8Strict } from '../strict-utf8.js'
 import { PrincipalRateLimiter } from './rate-limiter.js'
 import { RequestPolicy } from './request-policy.js'
 import type { HttpFailure, McpHttpConfig, McpHttpRoute, McpServerFactory } from './types.js'
@@ -60,7 +61,7 @@ export class McpHttpFacade implements McpHttpRoute {
   }
 }
 
-async function readJsonBody(req: IncomingMessage, maxBytes: number): Promise<unknown> {
+export async function readJsonBody(req: IncomingMessage, maxBytes: number): Promise<unknown> {
   const chunks: Buffer[] = []
   let size = 0
   for await (const raw of req) {
@@ -70,7 +71,8 @@ async function readJsonBody(req: IncomingMessage, maxBytes: number): Promise<unk
     chunks.push(chunk)
   }
   if (chunks.length === 0) throw { status: 400, code: 'EMPTY_BODY', message: 'MCP request body is required' } satisfies HttpFailure
-  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
+  // Client bodies are untrusted: strict UTF-8 without BOM, never U+FFFD-repaired.
+  return JSON.parse(decodeUtf8Strict(Buffer.concat(chunks), 'MCP request body')) as unknown
 }
 
 function writeFailure(res: ServerResponse, failure: HttpFailure): void {

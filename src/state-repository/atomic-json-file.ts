@@ -1,17 +1,16 @@
 import { randomUUID } from 'node:crypto'
-import { chmod, mkdir, open, readFile, rename, unlink } from 'node:fs/promises'
+import { mkdir, open, rename, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { isCode, readTextFileStrict } from '../strict-utf8.js'
+import { NodeFilePermissionBackend, type FilePermissionBackend } from './file-permissions.js'
+
+const defaultPermissionBackend = new NodeFilePermissionBackend()
 
 export async function readUtf8File(path: string): Promise<string | null> {
-  try {
-    return await readFile(path, { encoding: 'utf8' })
-  } catch (error) {
-    if (isCode(error, 'ENOENT')) return null
-    throw error
-  }
+  return readTextFileStrict(path)
 }
 
-export async function atomicWriteJson(path: string, value: unknown): Promise<void> {
+export async function atomicWriteJson(path: string, value: unknown, permissions: FilePermissionBackend = defaultPermissionBackend): Promise<void> {
   const directory = dirname(path)
   await mkdir(directory, { recursive: true })
   const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`
@@ -23,9 +22,10 @@ export async function atomicWriteJson(path: string, value: unknown): Promise<voi
     } finally {
       await handle.close()
     }
+    // Restrict before promotion so a failed ACL never swaps in an open file.
+    await restrictPermissions(temporary, permissions)
     await rename(temporary, path)
     await syncDirectory(directory)
-    await restrictPermissions(path)
   } catch (error) {
     try {
       await unlink(temporary)
@@ -36,12 +36,8 @@ export async function atomicWriteJson(path: string, value: unknown): Promise<voi
   }
 }
 
-export async function restrictPermissions(path: string): Promise<void> {
-  try {
-    await chmod(path, 0o600)
-  } catch (error) {
-    if (process.platform !== 'win32') throw error
-  }
+export async function restrictPermissions(path: string, permissions: FilePermissionBackend = defaultPermissionBackend): Promise<void> {
+  await permissions.restrict(path)
 }
 
 async function syncDirectory(directory: string): Promise<void> {
@@ -54,8 +50,4 @@ async function syncDirectory(directory: string): Promise<void> {
   } finally {
     await handle?.close()
   }
-}
-
-function isCode(error: unknown, code: string): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === code
 }

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { decodeUtf8Strict } from '../strict-utf8.js'
 import { HostRpcError, isTransientHostCode } from './host-errors.js'
 import type { BeforeDispatch } from './types.js'
 
@@ -20,7 +21,10 @@ export class HttpHostClient {
       const retryable = response.status === 408 || response.status === 429 || response.status >= 500
       throw new HostRpcError(`${method} transport failed: HTTP ${response.status}`, !retryable, `HOST_HTTP_${response.status}`, retryable)
     }
-    const envelope = await response.json() as { rpcId?: unknown; result?: RpcSuccess<T> | RpcFailure }
+    // The Host HTTP JSON body is untrusted: decode as strict UTF-8 without BOM
+    // so malformed responses fail loudly instead of being U+FFFD-repaired.
+    const text = decodeUtf8Strict(new Uint8Array(await response.arrayBuffer()), `${method} HTTP response body`)
+    const envelope = JSON.parse(text) as { rpcId?: unknown; result?: RpcSuccess<T> | RpcFailure }
     if (envelope.rpcId !== rpcId) throw new HostRpcError(`${method} returned a mismatched rpcId`, false, 'HOST_RPC_ID_MISMATCH', true)
     if (envelope.result === undefined) throw new HostRpcError(`${method} returned no result`, false, 'HOST_RPC_NO_RESULT', true)
     if (!envelope.result.ok) {

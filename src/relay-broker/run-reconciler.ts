@@ -27,8 +27,10 @@ export class RunReconciler {
       return
     }
     if (session.running) this.activeSessions.set(activeKey(run), run.snapshot.runId)
-    const previousDurableSeq = highestSeq(run.events, run.baselineSeq)
-    run.events = mergeEvents(run.events, await this.historyAfter(run.snapshot.sessionId, run.baselineSeq))
+    // First/recovery refresh pulls from baselineSeq; later refreshes continue
+    // from the highest durable seq already loaded instead of replaying history.
+    const previousDurableSeq = incrementalStartSeq(run.events, run.baselineSeq)
+    run.events = mergeEvents(run.events, await this.historyAfter(run.snapshot.sessionId, previousDurableSeq))
     const durableLastSeq = highestSeq(run.events, run.baselineSeq)
     const projectionLastSeq = session.projections?.asOfSeq
     const projectionProgress = typeof projectionLastSeq === 'number'
@@ -93,7 +95,12 @@ export class RunReconciler {
       && (nextForeignUser === undefined || event.seq < nextForeignUser.seq))
   }
 
-  async historyAfter(sessionId: string, baselineSeq: number): Promise<RpcEvent[]> {
+  /** Incremental history fetch from the run's current highest loaded durable seq. */
+  historySince(run: RunRecord): Promise<RpcEvent[]> {
+    return this.historyAfter(run.snapshot.sessionId, incrementalStartSeq(run.events, run.baselineSeq))
+  }
+
+  async historyAfter(sessionId: string, fromSeq: number): Promise<RpcEvent[]> {
     const events: RpcEvent[] = []
     let beforeSeq: number | undefined
     for (let pageNumber = 0; pageNumber < this.config.maxHistoryPages; pageNumber += 1) {
@@ -103,9 +110,9 @@ export class RunReconciler {
         ...(beforeSeq === undefined ? {} : { beforeSeq }),
       })
       const pageEvents = page.events.map(entry => entry.event)
-      events.push(...pageEvents.filter(event => event.seq > baselineSeq))
+      events.push(...pageEvents.filter(event => event.seq > fromSeq))
       const oldest = pageEvents.reduce((value, event) => Math.min(value, event.seq), Number.POSITIVE_INFINITY)
-      if (!page.hasMore || !Number.isFinite(oldest) || oldest <= baselineSeq) break
+      if (!page.hasMore || !Number.isFinite(oldest) || oldest <= fromSeq) break
       if (beforeSeq !== undefined && oldest >= beforeSeq) {
         throw new Error(`Harness history pagination made no progress for session ${sessionId}`)
       }
@@ -179,4 +186,19 @@ export class RunReconciler {
 
 function activeKey(run: RunRecord): string {
   return `${run.snapshot.serviceId}:${run.snapshot.sessionId}`
+}
+
+/**
+ * Monotonic after-cursor for a run: the highest durable event seq already
+ * loaded in this process, falling back to baselineSeq on first or recovery
+ * refresh so history is resumed from the persisted checkpoint instead of
+ * being replayed from the beginning of the session.
+ *
+ * Harness may finalize the newest event in place. Treat that trailing event
+ * as not yet durable and keep it inside the next cursor window; older durable
+ * history is never replayed.
+ */
+export function incrementalStartSeq(events: RpcEvent[], baselineSeq: number): number {
+  const highest = highestSeq(events, baselineSeq)
+  return highest === baselineSeq ? baselineSeq : Math.max(baselineSeq, highest - 1)
 }

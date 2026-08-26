@@ -1,6 +1,26 @@
 # CHANGELOG
 
+## 0.2.4
+
+### 2026-08-26 13:16
+
+- 构建改为隔离 staging、进程间锁和失败回滚后再提升 `dist`；版本同步与脚本 JSON 读取保持严格 UTF-8 无 BOM，目标版本未变化时不再重写清单。
+- durable history 首次或恢复时从 `baselineSeq` 读取，后续仅保留可变尾事件的常量窗口并从最高已确认序号增量续读；宿主轮询合同继续明确 30 秒等待只是切片，不得以 180 秒首轮上限取消整项任务。
+- HTTP JSON、state、status、descriptor、token、owner 与 lock 输入统一使用 fatal UTF-8 解码并拒绝 BOM，不再将畸形字节静默替换为 `U+FFFD`。
+- Windows 敏感文件通过当前用户 SID 施加并验证仅当前用户可访问的 ACL，权限失败明确上抛；临时文件先加固后再原子发布，避免并发读写落入 ACL 切换窗口。
+- 锁记录加入 PID、进程启动身份与 owner token 围栏；新增只读诊断及显式陈旧锁恢复，live/unknown 始终 fail-closed，恢复与释放均采用 compare-before-delete 防止 PID 复用和 ABA。
+- 新增并发构建、版本幂等、增量历史、严格 UTF-8、Windows ACL、锁恢复与 host poll contract 回归；主进程全量 191 项测试、严格 TypeScript、真实构建、MCP smoke 与发布包门禁通过。
+
 ## 0.2.3
+
+### 2026-08-25 17:03
+
+- 去掉 Skill/README 中「不要同步阻塞 / Poll without blocking」类措辞：只要本回合要消费 Harness 结果，就必须 `wait_run` 到终态；给出 `webUrl` 不等于完成。
+
+### 2026-08-25 16:51
+
+- 修正宿主过早结案：`wait_run`/`get_run`/`start_run`/`start_review` 现附加 `hostPollContract`；running 切片必须继续轮询，终态成功后必须先读 `assistantText`。用户要求审核后修改时，主进程不得在 Harness 仍 running 时宣称完成。
+- 更新 MCP Server instructions 与 `delegate-to-deepseek-harness` Skill，禁止把进度链接或无关后台通知当成审核结束。
 
 ### 2026-08-20 22:21
 

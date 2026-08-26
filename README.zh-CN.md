@@ -206,7 +206,7 @@ proxy 默认读取 `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json`；未�
 }
 ```
 
-保存返回的 `runId`、`sessionId` 和 `webUrl`，通过有界等待监控运行：
+保存返回的 `runId`、`sessionId` 和 `webUrl`，并持续调用 `wait_run` 直到终态。单次最多等待 30 秒；超时且 `status: running` 只是切片。若 `hostPollContract.hostMustCallWaitRunAgain` 为 true，必须立刻再调 `wait_run`。给出 `webUrl` 不等于完成：
 
 ```json
 {
@@ -317,7 +317,7 @@ DSH Relay 通过 `commands/execute` 调用 Harness 原生 `/permission` 命令�
 | `get_run_summary` | 将运行投影为稳定的状态、模型、权限、耗时和下一步字段。 |
 | `status_run` | 已弃用的兼容别名；请迁移到 `get_run`，计划在 0.3.0 删除。 |
 | `open_run` | 打开原生 Harness Web 会话链接。 |
-| `wait_run` | 最长等待 30 秒以获取运行进展。 |
+| `wait_run` | 最长等待 30 秒以获取运行进展。超时只是切片；若 `hostPollContract.hostMustCallWaitRunAgain` 为 true，必须立刻再调 `wait_run`。运行仍为 running 时不得结束宿主回合。 |
 | `list_runs` | 对账并列出已持久化运行。 |
 | `get_operation` | 读取一条持久化的 start、reply、steer 或 cancel 幂等操作。 |
 | `reconcile_operation` | 根据 Harness 持久事件解析不确定操作，且不重复提交请求。 |

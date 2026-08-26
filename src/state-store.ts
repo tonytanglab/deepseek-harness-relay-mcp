@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { open, rename } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { readdir, rename } from 'node:fs/promises'
+import { basename, dirname, join, resolve } from 'node:path'
 import {
   atomicWriteJson,
   FileLockFacade,
   legacySchemaVersion,
   migrationMarker,
+  NodeFilePermissionBackend,
   normalizeStateInput,
   parseAndNormalizeState,
   readUtf8File,
@@ -13,7 +14,11 @@ import {
   validateV3State,
   type FileLockLease,
   type FileLockOptions,
+  type FileLockInspection,
+  type FilePermissionBackend,
+  type FilePermissionCheck,
 } from './state-repository/index.js'
+import { readTextFileStrict } from './strict-utf8.js'
 import type {
   OperationRecord,
   PermissionLease,
@@ -26,16 +31,19 @@ import type {
 
 export interface RelayStateStoreOptions extends FileLockOptions {
   authority?: Omit<StateAuthorityMetadata, 'migration'>
+  permissions?: FilePermissionBackend
 }
 
 export class RelayStateStore {
   private writes = Promise.resolve()
   private recoveryMessage: string | null = null
   private readonly fileLock: FileLockFacade
+  private readonly permissions: FilePermissionBackend
   private readonly authority: Omit<StateAuthorityMetadata, 'migration'>
 
   constructor(private readonly path: string, options: RelayStateStoreOptions = {}) {
     this.fileLock = new FileLockFacade(options)
+    this.permissions = options.permissions ?? new NodeFilePermissionBackend()
     this.authority = options.authority ?? compatibilityAuthority(path)
   }
 
@@ -45,6 +53,35 @@ export class RelayStateStore {
 
   get authorityMetadata(): Omit<StateAuthorityMetadata, 'migration'> {
     return { ...this.authority }
+  }
+
+  get lockFile(): string {
+    return `${this.path}.lock`
+  }
+
+  /** Token-free lock diagnostics for doctor output; never steals or mutates locks. */
+  async inspectLockState(): Promise<{
+    stateFile: DoctorLockView
+    sessionLocks: DoctorLockView[]
+  }> {
+    const stateFile = doctorLockView(await this.fileLock.inspect(this.lockFile))
+    const sessionLocks: DoctorLockView[] = []
+    for (const lockPath of await this.sessionLockPaths()) {
+      sessionLocks.push(doctorLockView(await this.fileLock.inspect(lockPath)))
+    }
+    return { stateFile, sessionLocks }
+  }
+
+  async checkFilePermissions(paths: string[] = [this.path, this.lockFile]): Promise<Array<{ path: string; check: FilePermissionCheck }>> {
+    const results: Array<{ path: string; check: FilePermissionCheck }> = []
+    for (const path of paths) {
+      results.push({ path, check: await this.permissions.check(path) })
+    }
+    return results
+  }
+
+  async recoverStaleLock(lockPath = this.lockFile): Promise<{ recovered: boolean; reason: string }> {
+    return this.fileLock.recoverStale(lockPath)
   }
 
   async load(): Promise<PersistedRelayStateV3 | null> {
@@ -57,7 +94,7 @@ export class RelayStateStore {
       const lease = await this.fileLock.acquire(`${this.path}.lock`)
       try {
         const existing = await this.readState(true)
-        await atomicWriteJson(this.path, mergeStates(existing, validated))
+        await atomicWriteJson(this.path, mergeStates(existing, validated), this.permissions)
       } finally {
         await lease.release()
       }
@@ -82,7 +119,7 @@ export class RelayStateStore {
         const next: PersistedRelayStateV3 = existing === null
           ? emptyV3State(this.authority, [{ ...candidate }])
           : { ...existing, operations: [...existing.operations, { ...candidate }] }
-        await atomicWriteJson(this.path, validateV3State(next))
+        await atomicWriteJson(this.path, validateV3State(next), this.permissions)
         result = { record: { ...candidate }, created: true }
       } finally {
         await lease.release()
@@ -109,17 +146,33 @@ export class RelayStateStore {
       const version = legacySchemaVersion(source)
       const marker = migrationMarker(version, resolve(sourcePath), source)
       const migrated = parseAndNormalizeState(source, resolve(sourcePath), this.authority, marker)
-      await atomicWriteJson(this.path, migrated)
+      await atomicWriteJson(this.path, migrated, this.permissions)
       return migrated
     } finally {
       await lease.release()
     }
   }
 
-  private async readState(quarantineInvalid: boolean): Promise<PersistedRelayStateV3 | null> {
-    const text = await readUtf8File(this.path)
-    if (text === null) return null
+  private async sessionLockPaths(): Promise<string[]> {
+    const directory = dirname(this.path)
+    const prefix = `${basename(this.path)}.session.`
+    let entries: Array<{ name: string; isFile(): boolean }>
     try {
+      entries = await readdir(directory, { withFileTypes: true })
+    } catch (error) {
+      if (isCode(error, 'ENOENT')) return []
+      throw error
+    }
+    return entries
+      .filter(entry => entry.isFile() && entry.name.startsWith(prefix) && entry.name.endsWith('.lock'))
+      .map(entry => join(directory, entry.name))
+  }
+
+  private async readState(quarantineInvalid: boolean): Promise<PersistedRelayStateV3 | null> {
+    let text: string | null
+    try {
+      text = await readUtf8File(this.path)
+      if (text === null) return null
       return parseAndNormalizeState(text, this.path, this.authority)
     } catch (error) {
       if (error instanceof StateAuthorityMismatchError || !quarantineInvalid) throw error
@@ -136,13 +189,38 @@ export class RelayStateStore {
   }
 }
 
-async function readReadOnly(path: string): Promise<string> {
-  const handle = await open(path, 'r')
-  try {
-    return await handle.readFile({ encoding: 'utf8' })
-  } finally {
-    await handle.close()
+export interface DoctorLockView {
+  lockPath: string
+  present: boolean
+  valid: boolean
+  ownerState: 'none' | 'alive' | 'dead' | 'unknown'
+  processId: number | null
+  processStartedAt: string | null
+  acquiredAt: string | null
+  detail: string | null
+}
+
+function doctorLockView(inspection: FileLockInspection): DoctorLockView {
+  return {
+    lockPath: inspection.lockPath,
+    present: inspection.present,
+    valid: inspection.valid,
+    ownerState: inspection.ownerState,
+    processId: inspection.record === null ? null : inspection.record.processId,
+    processStartedAt: inspection.record === null ? null : inspection.record.processStartedAt,
+    acquiredAt: inspection.record === null ? null : inspection.record.acquiredAt,
+    detail: inspection.detail,
   }
+}
+
+async function readReadOnly(path: string): Promise<string> {
+  const text = await readTextFileStrict(path)
+  if (text === null) {
+    const error = new Error(`missing migration source: ${path}`) as Error & { code: string }
+    error.code = 'ENOENT'
+    throw error
+  }
+  return text
 }
 
 function compatibilityAuthority(path: string): Omit<StateAuthorityMetadata, 'migration'> {

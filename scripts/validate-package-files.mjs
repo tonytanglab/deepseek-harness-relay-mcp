@@ -1,4 +1,4 @@
-import { lstat, readFile, readdir } from 'node:fs/promises'
+import { lstat, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -6,9 +6,10 @@ import {
   validateManifestWhitelist,
   validatePackageFiles,
 } from './package-manifest-policy.mjs'
+import { readJsonFileStrict } from './strict-utf8.mjs'
 
 const pluginRoot = fileURLToPath(new URL('../', import.meta.url))
-const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+const manifest = await readJsonFileStrict(new URL('../package.json', import.meta.url))
 const whitelist = validateManifestWhitelist(manifest.files)
 const maxBytes = parseMaxBytes(process.env.DSH_RELAY_PACKAGE_MAX_BYTES)
 const records = [{ path: 'package.json', bytes: (await lstat(path.join(pluginRoot, 'package.json'))).size }]

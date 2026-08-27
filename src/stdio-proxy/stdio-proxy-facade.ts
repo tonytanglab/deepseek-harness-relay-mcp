@@ -4,7 +4,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { ProxyDiagnosticsFacade, type ProxyInspection } from './proxy-diagnostics-facade.js'
-import type { ProxyDoctorReport, ProxyRouteFailure, StdioProxyConfig } from './types.js'
+import type { ProxyDoctorReport, ProxyRouteFailure, StdioProxyConfig, StdioProxyDependencies } from './types.js'
 
 const principalPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/u
 const relayVersion = typeof __DSH_RELAY_VERSION__ === 'string' ? __DSH_RELAY_VERSION__ : 'development'
@@ -39,9 +39,9 @@ export class StdioProxyFacade {
   private connecting: Promise<boolean> | null = null
   private connected = false
 
-  constructor(private readonly config: StdioProxyConfig) {
+  constructor(private readonly config: StdioProxyConfig, dependencies: StdioProxyDependencies = {}) {
     if (!principalPattern.test(config.clientPrincipalId)) throw new Error('invalid DSH Relay client principal')
-    this.diagnostics = new ProxyDiagnosticsFacade(config.descriptorFile, config.statusFile)
+    this.diagnostics = new ProxyDiagnosticsFacade(config.descriptorFile, config.statusFile, dependencies)
     this.local.setRequestHandler(ListToolsRequestSchema, request => this.listTools(request.params?.cursor))
     this.local.setRequestHandler(CallToolRequestSchema, request => this.callTool(request.params.name, request.params.arguments))
   }

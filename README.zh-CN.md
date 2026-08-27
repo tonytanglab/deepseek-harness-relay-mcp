@@ -114,6 +114,43 @@ codex plugin list
 
 第一条命令登记本项目的 GitHub Marketplace；第二条命令从 npm 获取同版本插件包，并为 Codex 加载 `.mcp.json` 与 `delegate-to-deepseek-harness` Skill。Codex 侧只启动无业务状态的 `dist/dsh-relay-proxy.mjs`，它通过端点描述连接已经运行的 Harness 内部 bundle；这个流程不会修改 DeepSeek Harness 源码、`web` profile 的内部 bundle 配置或 `cordis.patch.yml`。
 
+#### Codex 内置 MCP 的生成规范（不要写错入口）
+
+Codex 插件 manifest 必须同时引用 Skill 和包内 MCP 声明：
+
+```json
+{
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}
+```
+
+随插件发布的 `.mcp.json` 必须使用下面的相对入口：
+
+```json
+{
+  "mcpServers": {
+    "harness-relay-mcp": {
+      "command": "node",
+      "args": ["./dist/dsh-relay-proxy.mjs"],
+      "cwd": "."
+    }
+  }
+}
+```
+
+`cwd: "."` 由 Codex 解析到当前已安装插件的版本根目录。不要写开发机绝对路径或 `%USERPROFILE%\.codex\plugins\cache\...` 版本缓存路径；不要在 Codex 用户 `config.toml` 再注册第二份同名 MCP。最重要的是，Codex 只能启动 `dsh-relay-proxy.mjs`：不能指向 `dsh-relay-harness.mjs`（Harness 内部 bundle），不能指向会另建独立控制面的 `dsh-relay.mjs`，也不能由 Codex 再启动第二个 Harness Web。proxy 通过 `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json` 自动发现已经运行的内部 authority，客户端配置不保存 bearer token。
+
+安装后新建 Codex 任务，正确调用链是：
+
+```text
+doctor → list_workspaces → list_capabilities
+  → start_review（分析/审核，只读）或 start_run（明确要求实施时使用 workspace-write）
+  → wait_run（循环到终态）→ 读取 assistantText → 主进程复核
+```
+
+用户明确指定 Harness/模型审核当前或命名的已注册工作区，即授权 Harness 在该范围内自行读取。Codex 只通过内置 MCP 传递工作区路径、任务、模型、权限和幂等信息，不应把源码正文复制进 MCP 参数，也不应误报为“Codex 上传源码”。这项授权不包含凭据、秘密、无关路径或写入。只有用户明确要求 Harness 修改、修复、实现或重构时，才调用 `start_run` 并选择 `permissionPreset: "workspace-write"`；单纯“调用 Harness”仍默认 `start_review`。
+
 安装后重启 Codex，并新建一个 Codex 任务，让新任务加载 MCP Server 和 Skill。可在新任务中要求：
 
 ```text
@@ -139,6 +176,8 @@ codex plugin add deepseek-harness-relay@harness-relay
 列出检测结果、缺失依赖、拟执行命令和影响范围，获得我确认后再操作。
 Harness 侧只能使用 dsh plugin --profile web add harness-relay-mcp 安装内部 bundle，不修改 DeepSeek Harness 源码，不把 Relay 添加为 Harness MCP client。
 Codex 侧使用仓库 Marketplace tonytanglab/deepseek-harness-relay-mcp，安装 deepseek-harness-relay@harness-relay。
+Codex 插件 manifest 必须引用包内 .mcp.json；.mcp.json 只能以 cwd "." 启动 node ./dist/dsh-relay-proxy.mjs。不要指向 dsh-relay-harness.mjs 或 dsh-relay.mjs，不要在用户 config.toml 重复注册 MCP，也不要启动第二个 Harness Web。
+当我明确指定 Harness/模型审核当前或命名的已注册工作区时，视为授权 Harness 在该范围内自行读取；Codex 只传 workspace、任务、模型、权限和幂等信息，不复制源码正文。若我明确要求 Harness 修改代码，使用 start_run + workspace-write；普通审核使用 start_review。
 安装后验证 dsh --profile web --dump-config、codex plugin list，并提醒我重启 Codex、新建任务后运行 doctor 与 list_workspaces。遇到错误时停止并报告原始错误，不扩大权限、不删除现有配置。
 ```
 

@@ -83,6 +83,7 @@ test('defaultProcessProbe reports a reused or unprobeable PID as unknown', () =>
   assert.equal(defaultProcessProbe(2_147_483_647), 'dead')
   assert.equal(defaultProcessProbe(0), 'unknown')
   assert.equal(defaultProcessProbe(-1), 'unknown')
+  assert.equal(defaultProcessProbe(123, () => { throw Object.assign(new Error('denied'), { code: 'EPERM' }) }), 'alive')
 })
 
 test('reclaimBuildLock uses compare-before-delete and restores a changed record', async () => {

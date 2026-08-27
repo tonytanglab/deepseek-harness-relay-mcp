@@ -1,6 +1,6 @@
 {
   "name": "deepseek-harness-relay",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Delegate and monitor DeepSeek Harness work from any MCP agent.",
   "author": {
     "name": "TonyTangLab"
@@ -25,8 +25,8 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Delegate this bounded task to DeepSeek Harness.",
-      "Run an independent Harness analysis and monitor it to completion."
+      "Use the bundled Harness Relay MCP proxy to delegate this bounded task; do not configure a duplicate MCP server or start another Harness Web.",
+      "Run an independent Harness analysis and monitor it to completion. Use start_run with workspace-write only when implementation is explicitly requested."
     ]
   }
 }

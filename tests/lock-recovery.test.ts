@@ -170,6 +170,7 @@ test('defaultProcessProbe and processStartIdentity are stable', () => {
   assert.equal(defaultProcessProbe(process.pid), 'alive')
   assert.equal(defaultProcessProbe(2_147_483_647), 'dead')
   assert.equal(defaultProcessProbe(0), 'unknown')
+  assert.equal(defaultProcessProbe(123, () => { throw Object.assign(new Error('denied'), { code: 'EPERM' }) }), 'alive')
   const startedAt = processStartIdentity()
   assert.equal(Number.isFinite(Date.parse(startedAt)), true)
 })
@@ -206,5 +207,45 @@ test('RelayStateStore exposes lock diagnostics and explicit stale recovery for d
   const outcome = await recovering.recoverStaleLock()
   assert.equal(outcome.recovered, true)
   assert.equal((await store.inspectLockState()).stateFile.present, false)
+  await rm(directory, { recursive: true, force: true })
+})
+
+test('RelayStateStore recovers all dead state and session locks only through the explicit authority path', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-store-lock-recover-all-'))
+  const statePath = join(directory, 'state.json')
+  const stateLock = `${statePath}.lock`
+  const sessionLock = `${statePath}.session.${'a'.repeat(64)}.lock`
+  await writtenLock(stateLock, deadRecord('dead-state-owner'))
+  await writtenLock(sessionLock, deadRecord('dead-session-owner'))
+  const store = new RelayStateStore(statePath, { permissions: noopPermissions, probe: () => 'dead' })
+
+  const report = await store.recoverDeadLocks()
+
+  assert.deepEqual(report.recovered.sort(), [sessionLock, stateLock].sort())
+  assert.deepEqual(report.skipped, [])
+  assert.match(store.recoveryWarning ?? '', /Recovered 2 stale state locks/iu)
+  assert.equal((await store.inspectLockState()).stateFile.present, false)
+  assert.deepEqual((await store.inspectLockState()).sessionLocks, [])
+  await rm(directory, { recursive: true, force: true })
+})
+
+test('RelayStateStore leaves live and unknown locks untouched during explicit dead-lock recovery', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-store-lock-recover-safe-'))
+  const statePath = join(directory, 'state.json')
+  const stateLock = `${statePath}.lock`
+  const sessionLock = `${statePath}.session.${'b'.repeat(64)}.lock`
+  await writtenLock(stateLock, deadRecord('live-state-owner'))
+  await writtenLock(sessionLock, deadRecord('unknown-session-owner', 8123))
+  const store = new RelayStateStore(statePath, {
+    permissions: noopPermissions,
+    probe: processId => processId === 2_147_483_647 ? 'alive' : 'unknown',
+  })
+
+  const report = await store.recoverDeadLocks()
+
+  assert.deepEqual(report.recovered, [])
+  assert.deepEqual(report.skipped.map(item => item.reason).sort(), ['owner-alive', 'owner-unknown'])
+  assert.equal((await store.inspectLockState()).stateFile.present, true)
+  assert.equal((await store.inspectLockState()).sessionLocks.length, 1)
   await rm(directory, { recursive: true, force: true })
 })

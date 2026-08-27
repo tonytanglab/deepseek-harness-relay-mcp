@@ -34,6 +34,11 @@ export interface RelayStateStoreOptions extends FileLockOptions {
   permissions?: FilePermissionBackend
 }
 
+export interface StateLockRecoveryReport {
+  recovered: string[]
+  skipped: Array<{ lockPath: string; reason: string }>
+}
+
 export class RelayStateStore {
   private writes = Promise.resolve()
   private recoveryMessage: string | null = null
@@ -82,6 +87,26 @@ export class RelayStateStore {
 
   async recoverStaleLock(lockPath = this.lockFile): Promise<{ recovered: boolean; reason: string }> {
     return this.fileLock.recoverStale(lockPath)
+  }
+
+  /**
+   * Explicitly recovers only locks whose owners are provably dead. Callers
+   * must first establish their authority fence; live and unknown owners are
+   * reported and left untouched.
+   */
+  async recoverDeadLocks(): Promise<StateLockRecoveryReport> {
+    const recovered: string[] = []
+    const skipped: StateLockRecoveryReport['skipped'] = []
+    const lockPaths = [this.lockFile, ...await this.sessionLockPaths()]
+    for (const lockPath of lockPaths) {
+      const outcome = await this.fileLock.recoverStale(lockPath)
+      if (outcome.recovered) recovered.push(lockPath)
+      else if (outcome.reason !== 'missing') skipped.push({ lockPath, reason: outcome.reason })
+    }
+    if (recovered.length > 0) {
+      this.recoveryMessage = `Recovered ${recovered.length} stale state lock${recovered.length === 1 ? '' : 's'} after authority acquisition.`
+    }
+    return { recovered, skipped }
   }
 
   async load(): Promise<PersistedRelayStateV3 | null> {

@@ -114,6 +114,35 @@ codex plugin list
 
 The first command registers this project's GitHub marketplace. The second fetches the same-version plugin package from npm and loads its `.mcp.json` plus the `delegate-to-deepseek-harness` Skill in Codex. The Codex layer starts only the stateless `dist/dsh-relay-proxy.mjs`, which discovers and connects to the running Harness bundle through its endpoint descriptor. It does not modify DeepSeek Harness source, the internal bundle configuration of the `web` profile, or `cordis.patch.yml`.
 
+#### Codex built-in MCP generation contract
+
+The Codex plugin manifest must reference both the packaged Skill and MCP declaration:
+
+```json
+{
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}
+```
+
+The packaged `.mcp.json` must use the plugin-relative proxy entrypoint:
+
+```json
+{
+  "mcpServers": {
+    "harness-relay-mcp": {
+      "command": "node",
+      "args": ["./dist/dsh-relay-proxy.mjs"],
+      "cwd": "."
+    }
+  }
+}
+```
+
+Codex resolves `cwd: "."` against the installed plugin version root. Do not hard-code a development checkout or a versioned `%USERPROFILE%\.codex\plugins\cache\...` path, and do not register a duplicate server in user `config.toml`. Codex must start only `dsh-relay-proxy.mjs`: never point it at `dsh-relay-harness.mjs` (the internal Harness bundle), `dsh-relay.mjs` (a separate standalone control plane), or start a second Harness Web. The proxy discovers the already-running authority through `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json`; client configuration never stores the bearer token.
+
+In a new Codex task, use `doctor → list_workspaces → list_capabilities`, then `start_review` for analysis or `start_run` with `workspace-write` when the user explicitly delegates implementation. Keep calling `wait_run` to a terminal state, consume `assistantText`, and verify the result. When a user explicitly selects Harness or a Harness model to review the current or named registered workspace, Harness is authorized to read that in-scope workspace itself. Codex sends only the workspace path, task, model, permission, and idempotency data; it should not paste source contents into MCP arguments or describe the flow as Codex uploading the repository. This does not authorize credentials, secrets, unrelated paths, or edits.
+
 Restart Codex after installation and start a new Codex task so the new task loads the MCP server and Skill. In that task, ask:
 
 ```text
@@ -139,6 +168,8 @@ First inspect the operating system, Node.js version, dsh, Codex CLI, Harness web
 Report the checks, missing dependencies, exact commands, and impact. Wait for my confirmation before making changes.
 On the Harness side, install the internal bundle only with dsh plugin --profile web add harness-relay-mcp. Do not modify DeepSeek Harness source and do not add Relay as a Harness MCP client.
 On the Codex side, add the tonytanglab/deepseek-harness-relay-mcp repository marketplace and install deepseek-harness-relay@harness-relay.
+The Codex manifest must reference the packaged .mcp.json, which must run node ./dist/dsh-relay-proxy.mjs with cwd ".". Do not point it at dsh-relay-harness.mjs or dsh-relay.mjs, duplicate it in user config.toml, or start a second Harness Web.
+When I explicitly select Harness or a Harness model to review the current or named registered workspace, treat that as authorization for Harness to read within that scope itself; send workspace/task/model/permission/idempotency metadata, not source contents. Use start_run + workspace-write only when I explicitly ask Harness to modify code; use start_review for ordinary review.
 After installation, verify dsh --profile web --dump-config and codex plugin list, then remind me to restart Codex, create a new task, and run doctor and list_workspaces.
 If any command fails, stop and report the original error. Do not broaden permissions or delete existing configuration.
 ```

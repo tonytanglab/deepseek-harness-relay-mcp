@@ -1,5 +1,6 @@
 import type { RelayEndpointDescriptor } from '../authority/index.js'
 import type { RelayStatusDocument } from '../relay-runtime/index.js'
+import type { ProcessProbe } from '../state-repository/index.js'
 
 export type { RelayEndpointDescriptor }
 
@@ -10,6 +11,10 @@ export interface StdioProxyConfig {
   requestTimeoutMs: number
 }
 
+export interface StdioProxyDependencies {
+  processProbe?: ProcessProbe
+}
+
 export type ProxyRouteReasonCode =
   | 'DESCRIPTOR_MISSING'
   | 'DESCRIPTOR_INVALID'
@@ -17,6 +22,8 @@ export type ProxyRouteReasonCode =
   | 'STATUS_INVALID'
   | 'STATUS_FAILED'
   | 'STATUS_NOT_READY'
+  | 'OWNER_DEAD'
+  | 'OWNER_UNPROBEABLE'
   | 'STALE_ENDPOINT_DESCRIPTOR'
   | 'TOKEN_UNREADABLE'
   | 'TOKEN_INVALID'
@@ -43,6 +50,7 @@ export interface ProxyDoctorReport {
   status: RelayStatusDocument | null
   endpoint: Omit<RelayEndpointDescriptor, 'tokenFilePath'> | null
   tokenFile: { exists: boolean; readable: boolean; valid: boolean }
+  ownerProbe: { processId: number | null; state: 'none' | 'alive' | 'dead' | 'unknown' }
   remote: { connected: boolean; lastError: ProxyRouteFailure | null }
   errorCode: ProxyRouteReasonCode | null
   remediation: string | null

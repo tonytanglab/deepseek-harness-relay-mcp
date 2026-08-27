@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { unlink } from 'node:fs/promises'
 import { z } from 'zod'
-import { atomicWriteJson, readUtf8File } from '../state-repository/index.js'
+import { atomicWriteJson, defaultProcessProbe, readUtf8File } from '../state-repository/index.js'
 import { hostIdentityKey, normalizeHostIdentity } from './host-identity.js'
 import { acquireRegistryGuard } from './registry-guard.js'
 import type {
@@ -74,7 +74,7 @@ export class AuthorityRegistryFacade {
     this.#processId = dependencies.processId ?? process.pid
     this.#processStartedAt = dependencies.processStartedAt ?? new Date(Date.now() - process.uptime() * 1_000).toISOString()
     this.#now = dependencies.now ?? (() => new Date())
-    this.#processProbe = dependencies.processProbe ?? probeProcess
+    this.#processProbe = dependencies.processProbe ?? defaultProcessProbe
     this.#sleep = dependencies.sleep ?? delay
     this.#random = dependencies.random ?? Math.random
   }
@@ -226,17 +226,6 @@ function isExactOwner(current: AuthorityOwnerRecord, input: AcquireAuthorityInpu
     && current.instanceId === input.instanceId
     && current.processId === processId
     && current.processStartedAt === startedAt
-}
-
-function probeProcess(processId: number): 'alive' | 'dead' | 'unknown' {
-  try {
-    process.kill(processId, 0)
-    return 'alive'
-  } catch (error) {
-    if (isCode(error, 'ESRCH')) return 'dead'
-    if (isCode(error, 'EPERM')) return 'alive'
-    return 'unknown'
-  }
 }
 
 function isCode(error: unknown, code: string): boolean {

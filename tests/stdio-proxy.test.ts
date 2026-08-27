@@ -9,7 +9,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { McpHttpFacade } from '../src/mcp-http/index.js'
-import { readEndpointDescriptor, StdioProxyFacade } from '../src/stdio-proxy/index.js'
+import { ProxyDiagnosticsFacade, readEndpointDescriptor, StdioProxyFacade } from '../src/stdio-proxy/index.js'
 
 test('stdio proxy discovers the authority and transparently forwards tools', async t => {
   const root = await temporaryDirectory(t)
@@ -151,6 +151,42 @@ test('stdio proxy reports failed status without exposing status credentials', as
   assert.doesNotMatch(JSON.stringify(report), /authorization|ownerToken|"token"/iu)
 })
 
+test('proxy doctor reports a provably dead ready owner before reading stale endpoint artifacts', async t => {
+  const root = await temporaryDirectory(t)
+  const descriptorFile = join(root, 'relay-endpoint.json')
+  await writeStatus(root, {
+    state: 'ready',
+    ownerPid: 2_147_483_647,
+    processStartedAt: '2026-08-20T00:00:00.000Z',
+  })
+
+  const diagnostics = new ProxyDiagnosticsFacade(descriptorFile)
+  const report = await diagnostics.doctor('test', false, null)
+
+  assert.equal(report.errorCode, 'OWNER_DEAD')
+  assert.deepEqual(report.ownerProbe, { processId: 2_147_483_647, state: 'dead' })
+  assert.match(report.remediation ?? '', /will not restart or stop/iu)
+  assert.doesNotMatch(JSON.stringify(report), /authorization|ownerToken|Bearer/iu)
+})
+
+test('proxy doctor fails closed when owner liveness cannot be verified', async t => {
+  const root = await temporaryDirectory(t)
+  const descriptorFile = join(root, 'relay-endpoint.json')
+  await writeStatus(root, {
+    state: 'starting',
+    ownerPid: 8123,
+    processStartedAt: '2026-08-20T00:00:00.000Z',
+  })
+
+  const diagnostics = new ProxyDiagnosticsFacade(descriptorFile, undefined, { processProbe: () => 'unknown' })
+  const inspected = await diagnostics.inspect()
+  const report = await diagnostics.doctor('test', false, null)
+
+  assert.equal(inspected.failure?.reasonCode, 'OWNER_UNPROBEABLE')
+  assert.deepEqual(report.ownerProbe, { processId: 8123, state: 'unknown' })
+  assert.equal(report.errorCode, 'OWNER_UNPROBEABLE')
+})
+
 for (const scenario of [
   { status: 401, reasonCode: 'AUTHENTICATION_FAILED' },
   { status: 405, reasonCode: 'POST_ROUTE_MISSING' },
@@ -231,19 +267,28 @@ async function temporaryDirectory(t: TestContext): Promise<string> {
 }
 
 async function writeReadyStatus(root: string, authorityId: string, ownerEpoch: number): Promise<void> {
+  await writeStatus(root, {
+    authorityId,
+    instanceId: authorityId,
+    ownerEpoch,
+  })
+}
+
+async function writeStatus(root: string, overrides: Record<string, unknown>): Promise<void> {
   await writeFile(join(root, 'relay-status.json'), JSON.stringify({
     schemaVersion: 1,
     state: 'ready',
-    authorityId,
+    authorityId: 'authority-ready',
     mode: 'embedded',
-    instanceId: authorityId,
+    instanceId: 'authority-ready',
     ownerPid: process.pid,
     processStartedAt: '2026-08-20T00:00:00.000Z',
-    ownerEpoch,
+    ownerEpoch: 1,
     hostIdentity: 'http://127.0.0.1:3080/',
     profile: 'web',
     dshHome: root,
     updatedAt: '2026-08-20T00:00:00.000Z',
     lastError: null,
+    ...overrides,
   }), { encoding: 'utf8' })
 }

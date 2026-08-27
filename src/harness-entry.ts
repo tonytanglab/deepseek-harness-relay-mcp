@@ -40,6 +40,7 @@ import {
   type RelayStatusError,
   type RelayStatusWriteInput,
 } from './relay-runtime/index.js'
+import { RelayStateStore } from './state-store.js'
 
 class RelayStartupError extends Error {
   readonly name = 'RelayStartupError'
@@ -139,6 +140,9 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
       }, { signal: options.signal })
       await writeRelayStatus(status, lifecycleStatus(paths, authorityId, instanceId, hostIdentity, 'starting', lease.record, null))
 
+      const stateStoreOptions = { authority: { authorityId, mode: 'embedded' as const, hostIdentity, instanceId } }
+      await new RelayStateStore(paths.stateFile, stateStoreOptions).recoverDeadLocks()
+
       const loadedToken = await new TokenStoreFacade().loadOrCreate({
         tokenFile: paths.tokenFile,
         environmentVariable: 'DSH_RELAY_TOKEN',
@@ -150,7 +154,7 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
         DSH_RELAY_CLIENT_PRINCIPAL_ID: 'embedded-authority',
       })
       const relay = new RelayFacade(relayConfig, fetch, adapters.gateway, {
-        stateStore: { authority: { authorityId, mode: 'embedded', hostIdentity, instanceId } },
+        stateStore: stateStoreOptions,
         permissionGateway: adapters.permissions,
       })
       const monitoring = new MonitoringFacade()

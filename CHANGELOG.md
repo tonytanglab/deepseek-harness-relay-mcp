@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 0.2.5
+
+### 2026-08-27 15:42
+
+- 发布 0.2.5：整合 embedded authority 死锁安全恢复、stdio proxy owner 存活诊断、Codex 内置 MCP 入口约束及 Harness 工作区授权语义，并完成版本同步、全量门禁与发布后回装验证。
+
+### 2026-08-27 14:26
+
+- 补充 Codex 插件内置 MCP 生成规范：manifest 引用包内 `.mcp.json`，且只允许以插件相对 `cwd` 启动 `dsh-relay-proxy.mjs`；明确禁止误指 Harness 内部 bundle、standalone 控制面、版本缓存绝对路径或用户级重复 MCP 配置。
+- 修正 Harness 委派授权说明：用户明确指定 Harness/模型审核已注册工作区时，Harness 在该范围内自行读取，Codex 只传递任务和范围元数据、不复制源码正文，也不再要求重复逐文件确认；明确实施请求才映射到 `start_run + workspace-write`。
+
+### 2026-08-27 08:43
+
+- 经 Cursor Grok 4.6 High Fast 只读审查与主进程复审，明确 stdio proxy 不得自动拉起、终止或接管共享 Harness Host；自动恢复仅限已持有 embedded authority 围栏后的显式死锁回收。
+- embedded authority 获取唯一 owner 租约后，在首次恢复状态前显式回收仅能证明由死进程遗留的 state/session 锁；live/unknown owner 继续 fail-closed，并保留 compare-before-delete 防 PID 复用与并发 ABA。
+- stdio proxy doctor 新增脱敏 owner 进程探针，陈旧 ready/starting sidecar 分别报告 `OWNER_DEAD` 或 `OWNER_UNPROBEABLE`，不再把死 Host 笼统误报为远端路由不可用。
+- authority、state lock 与构建锁统一进程探针语义：`ESRCH` 为 dead、`EPERM` 为 alive、其它异常为 unknown；新增死锁批量恢复、活/未知锁保护、诊断脱敏、升级交叠及 EPERM 回归测试。
+
 ## 0.2.4
 
 ### 2026-08-26 13:16

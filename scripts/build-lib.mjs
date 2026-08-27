@@ -17,14 +17,14 @@ export function processStartIdentity(pid = process.pid, uptimeMs = process.uptim
   return new Date(Date.now() - uptimeMs).toISOString()
 }
 
-export function defaultProcessProbe(processId) {
+export function defaultProcessProbe(processId, signalProcess = process.kill) {
   if (!Number.isSafeInteger(processId) || processId <= 0) return 'unknown'
   try {
-    process.kill(processId, 0)
+    signalProcess(processId, 0)
     return 'alive'
   } catch (error) {
     if (error?.code === 'ESRCH') return 'dead'
-    if (error?.code === 'EPERM') return 'unknown'
+    if (error?.code === 'EPERM') return 'alive'
     return 'unknown'
   }
 }

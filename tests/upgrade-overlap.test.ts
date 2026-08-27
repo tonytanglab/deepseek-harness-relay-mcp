@@ -44,7 +44,10 @@ test('overlapping Web upgrade waits for the old owner and reconnects the same pr
   const oldLease = await oldRegistry.acquire(ownerInput)
   await publishRuntime(descriptorFile, statusFile, tokenFile, hostIdentity, oldLease.record.epoch, oldLease.record.processId, oldLease.record.processStartedAt)
 
-  const proxy = new StdioProxyFacade({ descriptorFile, statusFile, clientPrincipalId: 'codex:upgrade', requestTimeoutMs: 1_000 })
+  const proxy = new StdioProxyFacade(
+    { descriptorFile, statusFile, clientPrincipalId: 'codex:upgrade', requestTimeoutMs: 1_000 },
+    { processProbe: probe },
+  )
   const [clientTransport, proxyTransport] = InMemoryTransport.createLinkedPair()
   await proxy.connect(proxyTransport)
   t.after(async () => { await proxy.close() })

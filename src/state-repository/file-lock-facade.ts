@@ -245,13 +245,17 @@ async function restoreClaimByCopy(
   return { deleted: false, reason: 'record-changed-restored-copy' }
 }
 
-export function defaultProcessProbe(processId: number): 'alive' | 'dead' | 'unknown' {
+export function defaultProcessProbe(
+  processId: number,
+  signalProcess: (processId: number, signal: 0) => boolean = process.kill,
+): 'alive' | 'dead' | 'unknown' {
   if (!Number.isSafeInteger(processId) || processId <= 0) return 'unknown'
   try {
-    process.kill(processId, 0)
+    signalProcess(processId, 0)
     return 'alive'
   } catch (error) {
     if (isCode(error, 'ESRCH')) return 'dead'
+    if (isCode(error, 'EPERM')) return 'alive'
     return 'unknown'
   }
 }

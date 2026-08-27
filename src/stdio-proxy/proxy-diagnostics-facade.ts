@@ -1,5 +1,6 @@
 import { dirname, join } from 'node:path'
 import { readTextFileStrict } from '../strict-utf8.js'
+import { defaultProcessProbe, type ProcessProbe } from '../state-repository/index.js'
 import { RelayStatusFacade, type RelayStatusDocument } from '../relay-runtime/index.js'
 import { readEndpointDescriptor } from './descriptor-reader.js'
 import type {
@@ -16,18 +17,26 @@ interface ProxyInspection {
   descriptor: RelayEndpointDescriptor | null
   token: string | null
   tokenFile: ProxyDoctorReport['tokenFile']
+  ownerProbe: ProxyDoctorReport['ownerProbe']
   failure: ProxyRouteFailure | null
+}
+
+export interface ProxyDiagnosticsDependencies {
+  processProbe?: ProcessProbe
 }
 
 /** Local, credential-safe diagnostics used even when the embedded route is unavailable. */
 export class ProxyDiagnosticsFacade {
   readonly statusFile: string
+  private readonly processProbe: ProcessProbe
 
   constructor(
     private readonly descriptorFile: string,
     statusFile?: string,
+    dependencies: ProxyDiagnosticsDependencies = {},
   ) {
     this.statusFile = statusFile ?? join(dirname(descriptorFile), 'relay-status.json')
+    this.processProbe = dependencies.processProbe ?? defaultProcessProbe
   }
 
   async inspect(): Promise<ProxyInspection> {
@@ -42,6 +51,7 @@ export class ProxyDiagnosticsFacade {
       return emptyInspection(failure('STATUS_MISSING', 'Relay status sidecar is missing.', true,
         'Start or reload the Harness web profile with the embedded Relay plugin installed.'))
     }
+    const ownerProbe = this.inspectOwner(status)
     if (status.state === 'failed') {
       const detail = status.lastError
       return inspection(status, null, null, emptyToken(), failure(
@@ -49,7 +59,23 @@ export class ProxyDiagnosticsFacade {
         detail === null ? 'Embedded Relay startup failed.' : `${detail.code}: ${detail.message}`,
         true,
         detail?.remediation ?? 'Correct the reported startup failure, then reload the Harness web profile.',
-      ))
+      ), ownerProbe)
+    }
+    if (ownerProbe.state === 'dead') {
+      return inspection(status, null, null, emptyToken(), failure(
+        'OWNER_DEAD',
+        `Embedded Relay owner PID ${ownerProbe.processId} is no longer running.`,
+        true,
+        'Start or reload the Harness web profile; Relay will not restart or stop the shared Host process.',
+      ), ownerProbe)
+    }
+    if (ownerProbe.state === 'unknown') {
+      return inspection(status, null, null, emptyToken(), failure(
+        'OWNER_UNPROBEABLE',
+        `Embedded Relay owner PID ${ownerProbe.processId} could not be verified safely.`,
+        true,
+        'Inspect the Harness web profile process and reload it if Relay remains unavailable.',
+      ), ownerProbe)
     }
     if (status.state !== 'ready') {
       return inspection(status, null, null, emptyToken(), failure(
@@ -57,7 +83,7 @@ export class ProxyDiagnosticsFacade {
         `Embedded Relay status is ${status.state}.`,
         true,
         status.state === 'stopped' ? 'Start the Harness web profile.' : 'Wait for Relay startup to finish, then retry.',
-      ))
+      ), ownerProbe)
     }
 
     let descriptor: RelayEndpointDescriptor
@@ -70,7 +96,7 @@ export class ProxyDiagnosticsFacade {
         reason === 'DESCRIPTOR_MISSING' ? 'Relay endpoint descriptor is missing.' : errorText(error),
         true,
         'Reload the Harness web profile so Relay can publish a fresh endpoint descriptor.',
-      ))
+      ), ownerProbe)
     }
     if (descriptor.authorityId !== status.authorityId
       || descriptor.ownerEpoch !== status.ownerEpoch
@@ -80,7 +106,7 @@ export class ProxyDiagnosticsFacade {
         'Relay status and endpoint descriptor identify different authority lifecycles.',
         true,
         'Reload the Harness web profile and wait for a matching ready status and endpoint epoch.',
-      ))
+      ), ownerProbe)
     }
 
     let rawToken: string
@@ -94,7 +120,7 @@ export class ProxyDiagnosticsFacade {
         'Relay token file is missing or unreadable.',
         true,
         'Reload Relay and ensure the token file is readable only by the current user.',
-      ))
+      ), ownerProbe)
     }
     const token = rawToken.trim()
     if (!tokenPattern.test(token)) {
@@ -103,9 +129,9 @@ export class ProxyDiagnosticsFacade {
         'Relay token file has an invalid format.',
         true,
         'Remove the invalid runtime credential and reload the Harness web profile to create a new token.',
-      ))
+      ), ownerProbe)
     }
-    return inspection(status, descriptor, token, { exists: true, readable: true, valid: true }, null)
+    return inspection(status, descriptor, token, { exists: true, readable: true, valid: true }, null, ownerProbe)
   }
 
   async doctor(relayVersion: string, connected: boolean, lastError: ProxyRouteFailure | null): Promise<ProxyDoctorReport> {
@@ -121,6 +147,7 @@ export class ProxyDiagnosticsFacade {
       status: inspected.status,
       endpoint: sanitizeEndpoint(inspected.descriptor),
       tokenFile: inspected.tokenFile,
+      ownerProbe: inspected.ownerProbe,
       remote: { connected, lastError },
       errorCode: routeFailure?.reasonCode ?? null,
       remediation: routeFailure?.remediation ?? null,
@@ -146,6 +173,11 @@ export class ProxyDiagnosticsFacade {
     return failure('REMOTE_UNAVAILABLE', 'Embedded Relay route is unavailable.', true,
       'Run the local doctor, correct the reported runtime state, then retry.')
   }
+
+  private inspectOwner(status: RelayStatusDocument): ProxyDoctorReport['ownerProbe'] {
+    if (status.ownerPid === null) return emptyOwnerProbe()
+    return { processId: status.ownerPid, state: this.processProbe(status.ownerPid) }
+  }
 }
 
 export type { ProxyInspection }
@@ -156,8 +188,9 @@ function inspection(
   token: string | null,
   tokenFile: ProxyDoctorReport['tokenFile'],
   routeFailure: ProxyRouteFailure | null,
+  ownerProbe: ProxyDoctorReport['ownerProbe'] = emptyOwnerProbe(),
 ): ProxyInspection {
-  return { status, descriptor, token, tokenFile, failure: routeFailure }
+  return { status, descriptor, token, tokenFile, ownerProbe, failure: routeFailure }
 }
 
 function emptyInspection(routeFailure: ProxyRouteFailure): ProxyInspection {
@@ -166,6 +199,10 @@ function emptyInspection(routeFailure: ProxyRouteFailure): ProxyInspection {
 
 function emptyToken(): ProxyDoctorReport['tokenFile'] {
   return { exists: false, readable: false, valid: false }
+}
+
+function emptyOwnerProbe(): ProxyDoctorReport['ownerProbe'] {
+  return { processId: null, state: 'none' }
 }
 
 function sanitizeEndpoint(descriptor: RelayEndpointDescriptor | null): ProxyDoctorReport['endpoint'] {

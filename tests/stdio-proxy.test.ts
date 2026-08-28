@@ -151,6 +151,71 @@ test('stdio proxy reports failed status without exposing status credentials', as
   assert.doesNotMatch(JSON.stringify(report), /authorization|ownerToken|"token"/iu)
 })
 
+test('stdio proxy preserves a healthy remote route after a tool call timeout', async t => {
+  const root = await temporaryDirectory(t)
+  const token = 'T'.repeat(43)
+  const tokenFile = join(root, 'relay.token')
+  await writeFile(tokenFile, `${token}\n`, { encoding: 'utf8', mode: 0o600 })
+  let facade: McpHttpFacade
+  const http = createHttpServer((req, res) => { void facade.handle(req, res) })
+  await listen(http)
+  t.after(async () => { await facade.drain(); await close(http) })
+  const address = http.address()
+  assert(address !== null && typeof address === 'object')
+  const host = `127.0.0.1:${address.port}`
+  facade = new McpHttpFacade({
+    token,
+    allowedHosts: [host],
+    allowedOrigins: [],
+    maxBodyBytes: 64 * 1024,
+    maxConcurrent: 8,
+    requestsPerMinute: 1_000,
+    drainTimeoutMs: 100,
+  }, () => {
+    const server = new McpServer({ name: 'remote', version: '1.0.0' })
+    server.registerTool('slow', { inputSchema: {} }, async () => {
+      await new Promise(resolve => setTimeout(resolve, 100))
+      return { content: [{ type: 'text', text: 'late' }] }
+    })
+    server.registerTool('quick', { inputSchema: {} }, () => ({
+      content: [{ type: 'text', text: 'ready' }],
+      structuredContent: { ready: true },
+    }))
+    return server
+  })
+  const descriptorFile = join(root, 'relay-endpoint.json')
+  await writeFile(descriptorFile, JSON.stringify({
+    schemaVersion: 1,
+    authorityId: 'authority-timeout',
+    mode: 'embedded',
+    mcpUrl: `http://${host}/plugins/dsh-relay/mcp`,
+    tokenFilePath: tokenFile,
+    hostWebUrl: `http://${host}/`,
+    ownerEpoch: 1,
+    updatedAt: '2026-08-19T00:00:00.000Z',
+  }), { encoding: 'utf8' })
+  await writeReadyStatus(root, 'authority-timeout', 1)
+
+  const proxy = new StdioProxyFacade({ descriptorFile, clientPrincipalId: 'codex:user', requestTimeoutMs: 50 })
+  const [clientTransport, proxyTransport] = InMemoryTransport.createLinkedPair()
+  await proxy.connect(proxyTransport)
+  t.after(async () => { await proxy.close() })
+  const client = new Client({ name: 'local', version: '1.0.0' })
+  await client.connect(clientTransport)
+  t.after(async () => { await client.close() })
+
+  const timedOut = await client.callTool({ name: 'slow', arguments: {} })
+  assert.equal(timedOut.isError, true)
+  assert.equal((timedOut.structuredContent as { code?: unknown }).code, 'RELAY_REQUEST_TIMEOUT')
+  assert.notEqual((timedOut.structuredContent as { code?: unknown }).code, 'RELAY_ROUTE_UNAVAILABLE')
+  assert.equal((timedOut.structuredContent as { outcome?: unknown }).outcome, 'unknown')
+
+  assert.deepEqual((await client.callTool({ name: 'quick', arguments: {} })).structuredContent, { ready: true })
+  const doctor = await client.callTool({ name: 'doctor', arguments: {} })
+  assert.equal((doctor.structuredContent as { ok?: unknown }).ok, true)
+  assert.equal((doctor.structuredContent as { remote?: { connected?: unknown } }).remote?.connected, true)
+})
+
 test('proxy doctor reports a provably dead ready owner before reading stale endpoint artifacts', async t => {
   const root = await temporaryDirectory(t)
   const descriptorFile = join(root, 'relay-endpoint.json')

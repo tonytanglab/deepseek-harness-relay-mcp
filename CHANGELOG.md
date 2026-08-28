@@ -1,6 +1,19 @@
 # CHANGELOG
 
+## 0.2.6
+
+### 2026-08-28 13:38
+
+- 发布 0.2.6：阻止 `reasoning` 内容回退到公开 `assistantText`，统一 `reply_run`、`status_run` 与 `cancel_run` 的 `hostPollContract`，并将 stdio proxy 单次工具调用超时与真实路由故障分离，避免健康连接被误失效。
+- 新增 reasoning-only、运行快照轮询合同及慢调用超时后的连接存活回归测试；经两轮 Grok 4.6 只读审查、主进程复核、TypeScript、构建、MCP smoke 与发布包门禁验证。
+
 ## 0.2.5
+
+### 2026-08-28 13:14
+
+- 修复最终助手文本投影边界：`assistantText` 仅保留公开 `text` 内容，不再在无文本时回退并暴露 `reasoning`；为 reasoning-only、文本与推理混合及非终态事件流补充回归测试。
+- 统一运行快照轮询合同：`reply_run`、兼容别名 `status_run` 与 `cancel_run` 均附加 `hostPollContract`，覆盖运行中与终态 MCP 返回。
+- 区分 stdio proxy 单次远端工具调用超时与路由故障：超时返回 `RELAY_REQUEST_TIMEOUT` 和未知结果提示，不再将健康远端连接失效或误报 `RELAY_ROUTE_UNAVAILABLE`；新增超时后连接继续可用及 doctor 健康回归测试，并经 Grok 4.6 二轮只读复审确认无新增业务代码问题。
 
 ### 2026-08-27 17:23
 

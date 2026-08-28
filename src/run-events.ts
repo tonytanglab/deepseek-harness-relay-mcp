@@ -28,10 +28,7 @@ export function finalAssistantText(events: RpcEvent[]): string {
     const blocks = content.flatMap(block => isRecord(block) && block.type === 'text' && typeof block.text === 'string' ? [block.text] : [])
     return blocks.length === 0 ? [] : [blocks.join('\n')]
   })
-  if (text.length > 0) return text.join('\n\n')
-  return messages.flatMap(content => content.flatMap(block =>
-    isRecord(block) && block.type === 'reasoning' && typeof block.text === 'string' ? [block.text] : [],
-  )).join('\n\n')
+  return text.join('\n\n')
 }
 
 /**

@@ -194,7 +194,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
 
   server.registerTool('status_run', {
     title: 'Deprecated: get Harness run status', description: 'Deprecated compatibility alias; use get_run. Scheduled for removal in 0.3.0.', inputSchema: { runId: id }, annotations: readOnly,
-  }, guarded(input => relay.getRun(input.runId)))
+  }, guarded(async input => withHostPollContract(await relay.getRun(input.runId))))
 
   server.registerTool('open_run', {
     title: 'Open a Harness run',
@@ -256,11 +256,11 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
     ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
     ...(input.confirmedDangerousPermission ? { confirmedDangerousPermission: true } : {}),
     ...(input.idempotencyKey === undefined ? {} : { idempotencyKey: input.idempotencyKey }),
-  }, clientPrincipalId)))
+  }, clientPrincipalId).then(withHostPollContract)))
 
   server.registerTool('cancel_run', {
     title: 'Cancel a Harness run', description: 'Request cancellation through the public Host API.', inputSchema: { runId: id, idempotencyKey }, annotations: destructive,
-  }, guarded(input => relay.cancelRun(input.runId, input.idempotencyKey, clientPrincipalId)))
+  }, guarded(input => relay.cancelRun(input.runId, input.idempotencyKey, clientPrincipalId).then(withHostPollContract)))
 
   return server
 }

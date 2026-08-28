@@ -2,7 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
+import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { ProxyDiagnosticsFacade, type ProxyInspection } from './proxy-diagnostics-facade.js'
 import type { ProxyDoctorReport, ProxyRouteFailure, StdioProxyConfig, StdioProxyDependencies } from './types.js'
 
@@ -97,6 +97,7 @@ export class StdioProxyFacade {
         { timeout: this.config.requestTimeoutMs },
       )
     } catch (error) {
+      if (isRequestTimeout(error)) return requestTimeoutResult(name, this.config.requestTimeoutMs)
       const routeFailure = this.diagnostics.remoteFailure(error)
       await this.invalidateRemote(routeFailure)
       return unavailableResult(routeFailure)
@@ -197,6 +198,25 @@ function unavailableResult(routeFailure: ProxyRouteFailure): object {
     structuredContent: routeFailure,
     isError: true,
   }
+}
+
+function requestTimeoutResult(toolName: string, timeoutMs: number): object {
+  const timeout = {
+    code: 'RELAY_REQUEST_TIMEOUT',
+    message: `Remote Relay tool ${JSON.stringify(toolName)} timed out after ${timeoutMs} ms.`,
+    retryable: true,
+    outcome: 'unknown',
+    nextAction: 'inspect_or_retry_idempotently',
+  }
+  return {
+    content: [{ type: 'text', text: `${timeout.code}: ${timeout.message}` }],
+    structuredContent: timeout,
+    isError: true,
+  }
+}
+
+function isRequestTimeout(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === ErrorCode.RequestTimeout
 }
 
 function descriptorKey(descriptor: ProxyInspection['descriptor']): string | null {

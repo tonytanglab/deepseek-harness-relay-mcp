@@ -35,6 +35,12 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
     async waitRun(runId: string): Promise<RunSnapshot> {
       return snapshot(runId)
     },
+    async replyRun(runId: string): Promise<RunSnapshot> {
+      return snapshot(runId)
+    },
+    async cancelRun(runId: string): Promise<RunSnapshot> {
+      return { ...snapshot(runId), status: 'cancelled', finishedAt: '2026-08-19T00:01:00.000Z' }
+    },
   } as unknown as RelayFacade
   const server = createServer(relay, config())
   const client = new Client({ name: 'product-tools-test', version: '1.0.0' })
@@ -114,6 +120,28 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
       nextTool: 'wait_run',
       consumeAssistantTextBeforeClosing: false,
     })
+
+    const replied = await client.callTool({
+      name: 'reply_run',
+      arguments: { runId: '5f502f03-3a5e-4e3d-9b18-373306961a79', task: 'continue' },
+    })
+    assert.equal(pollContract(replied).hostMustCallWaitRunAgain, true)
+    assert.equal(pollContract(replied).runComplete, false)
+
+    const status = await client.callTool({
+      name: 'status_run',
+      arguments: { runId: '5f502f03-3a5e-4e3d-9b18-373306961a79' },
+    })
+    assert.equal(pollContract(status).hostMustCallWaitRunAgain, true)
+    assert.equal(pollContract(status).runComplete, false)
+
+    const cancelled = await client.callTool({
+      name: 'cancel_run',
+      arguments: { runId: '5f502f03-3a5e-4e3d-9b18-373306961a79' },
+    })
+    assert.equal(pollContract(cancelled).hostMustCallWaitRunAgain, false)
+    assert.equal(pollContract(cancelled).runComplete, true)
+    assert.equal(pollContract(cancelled).nextTool, 'inspect_error')
   } finally {
     await client.close()
     await server.close()
@@ -131,6 +159,16 @@ function setupArguments(): Record<string, unknown> {
     relayEntry: 'C:\\Program Files\\DSH Relay\\dist\\dsh-relay.mjs',
     endpointDescriptor: 'C:\\Users\\Ada\\.dsh\\profiles\\web\\dsh-relay\\relay-endpoint.json',
   }
+}
+
+interface PollContractProjection {
+  hostMustCallWaitRunAgain?: boolean
+  runComplete?: boolean
+  nextTool?: string
+}
+
+function pollContract(result: unknown): PollContractProjection {
+  return (result as { structuredContent: { hostPollContract: PollContractProjection } }).structuredContent.hostPollContract
 }
 
 function snapshot(runId: string): RunSnapshot {

@@ -149,6 +149,8 @@ doctor → list_workspaces → list_capabilities
   → wait_run（循环到终态）→ 读取 assistantText → 主进程复核
 ```
 
+上述操作只能直接调用已安装插件暴露的原生 MCP 工具；严禁生成临时 `.tmp/harness-*-call.mjs`，也不得通过 `node`、PowerShell、Python 或其它 shell 调用、轮询 Relay，否则会绕过托管后台传输，并可能在 Windows 弹出可见控制台。若原生工具不可用，应修复或重装插件并新建 Codex 任务，不能回退到 shell 客户端。
+
 用户明确指定 Harness/模型审核当前或命名的已注册工作区，即授权 Harness 在该范围内自行读取。主任务只通过内置 MCP 传递工作区、文件/目录位置、审查或实施范围、验收条件以及路由/权限元数据；Harness 必须在已授权工作区内自行读取。无论使用 `read-only` 还是 `workspace-write`，都禁止把源码正文、diff、文件转储、源码编码或仓库归档嵌入 `task`、文本 `content`、`steer_run` 或 `reply_run` 参数，也不应误报为“Codex 上传源码”。写权限只改变 Harness 可执行的操作，不改变源码传递边界。这项授权不包含凭据、秘密或无关路径。只有用户明确要求 Harness 修改、修复、实现或重构时，才调用 `start_run` 并选择 `permissionPreset: "workspace-write"`；单纯“调用 Harness”仍默认 `start_review`。
 
 安装后重启 Codex，并新建一个 Codex 任务，让新任务加载 MCP Server 和 Skill。可在新任务中要求：

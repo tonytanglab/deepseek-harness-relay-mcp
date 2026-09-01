@@ -2,6 +2,12 @@
 
 ## 0.2.9
 
+### 2026-09-01 22:35
+
+- 修复 Codex 调用 Harness Relay 时可能回退到临时 `.tmp/harness-*-call.mjs` 并反复启动可见 `node` 控制台的问题：插件默认提示、委派 Skill 与 MCP Server 指令统一要求仅通过已安装的原生 MCP 工具调用和轮询。
+- 原生 Relay 工具不可用时改为安全停止委派、修复或重装插件并在新 Codex 任务加载，禁止以 Node、PowerShell、Python 或其它 shell 客户端模拟缺失工具；普通本地验证仍可在 Codex 内置终端运行，但不得作为 Relay RPC 传输。
+- 新增无感后台调用契约与 `wait_run` 工具描述回归，并同步更新中英文使用说明；Skill、插件结构、严格 TypeScript、构建、发布文件检查及全量 214 项测试全部通过。
+
 ### 2026-09-01 22:14
 
 - 修复 embedded Harness 从源码启动时的自动恢复契约：发布启动器时保留官方 `node --import tsx/esm` 执行参数，避免 stdio proxy 重启为不带 loader 的 raw Node 并触发 Cordis `FiberState` 运行时导出错误。

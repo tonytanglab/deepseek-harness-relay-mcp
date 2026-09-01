@@ -107,6 +107,7 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
     const startReview = tools.tools.find(item => item.name === 'start_review')
     assert.match(waitRun?.description ?? '', /A timeout is a slice, not completion/)
     assert.match(waitRun?.description ?? '', /MUST call wait_run again immediately/)
+    assert.match(waitRun?.description ?? '', /never poll through a temporary Node, PowerShell, Python, or shell client/)
     assert.match(startReview?.description ?? '', /MUST read assistantText/)
     assert.match(startRun?.description ?? '', /path-reference-only/)
     assert.match(startReview?.description ?? '', /Never embed source text/)

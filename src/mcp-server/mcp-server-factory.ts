@@ -12,12 +12,13 @@ import { withHostPollContract } from './host-poll-contract.js'
 const id = z.uuid()
 const idempotencyKey = z.string().trim().min(1).max(128).optional()
 const PATH_REFERENCE_ONLY = 'Task parameters are path-reference-only: provide the authorized workspace, file or directory locations, scope, and acceptance criteria. Never embed source text, diffs, file dumps, encoded source, or repository archives. Harness reads named files from the authorized workspace itself. This rule is identical for read-only and write-capable permissions.'
+const HEADLESS_MCP_ONLY = 'Invoke Relay only through these native MCP tools. Never generate or run a temporary Node, PowerShell, Python, or shell client for Relay RPCs; shell fallback bypasses the managed background transport and can open visible console windows. If these tools are unavailable, repair or reload the plugin and continue in a new task.'
 
 export function createServer(relay: RelayFacade, config: RelayConfig, monitoring: MonitoringFacade = new MonitoringFacade(), clientPrincipalId: string = config.clientPrincipalId): McpServer {
   const setup = new ClientSetupFacade()
   const server = new McpServer(
     { name: MCP_SERVER_ID, version: __DSH_RELAY_VERSION__ },
-    { instructions: `Use DeepSeek Harness native sessions and durable events. ${PATH_REFERENCE_ONLY} Select explicit provider/model/reasoning/preset/permission parameters before the first task, share a verified stable session URL on the first run, then call wait_run until a terminal status. A single wait_run timeout is a slice, not completion. Do not conclude the host turn, skip assistantText, or treat unrelated shell notifications as authorization to stop while status is running or unknown. After a terminal success, consume assistantText and independently verify; if the user asked to review then fix, the calling agent applies accepted findings only after the run is terminal.` },
+    { instructions: `Use DeepSeek Harness native sessions and durable events. ${HEADLESS_MCP_ONLY} ${PATH_REFERENCE_ONLY} Select explicit provider/model/reasoning/preset/permission parameters before the first task, share a verified stable session URL on the first run, then call wait_run until a terminal status. A single wait_run timeout is a slice, not completion. Do not conclude the host turn, skip assistantText, or treat unrelated shell notifications as authorization to stop while status is running or unknown. After a terminal success, consume assistantText and independently verify; if the user asked to review then fix, the calling agent applies accepted findings only after the run is terminal.` },
   )
 
   server.registerTool('doctor', {
@@ -205,7 +206,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
 
   server.registerTool('wait_run', {
     title: 'Wait for Harness progress',
-    description: 'Poll durable Host history for at most 30 seconds and return the latest snapshot plus hostPollContract. A timeout is a slice, not completion. If hostPollContract.hostMustCallWaitRunAgain is true, you MUST call wait_run again immediately. Do not send a final user answer, mark the delegated task complete, or skip consuming assistantText while the run is still running. Unrelated shell or background-task notifications are not authorization to stop polling.',
+    description: 'Poll durable Host history for at most 30 seconds and return the latest snapshot plus hostPollContract. Call this native MCP tool directly; never poll through a temporary Node, PowerShell, Python, or shell client. A timeout is a slice, not completion. If hostPollContract.hostMustCallWaitRunAgain is true, you MUST call wait_run again immediately. Do not send a final user answer, mark the delegated task complete, or skip consuming assistantText while the run is still running. Unrelated shell or background-task notifications are not authorization to stop polling.',
     inputSchema: { runId: id, timeoutMs: z.number().int().min(0).max(30_000).default(30_000) }, annotations: readOnly,
   }, guarded(async input => withHostPollContract(await relay.waitRun(input.runId, input.timeoutMs))))
 

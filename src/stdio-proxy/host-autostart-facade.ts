@@ -1,8 +1,12 @@
 import { spawn } from 'node:child_process'
 import { access, constants } from 'node:fs/promises'
 import { createConnection } from 'node:net'
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
-import type { RelayHostLauncher, RelayStatusDocument } from '../relay-runtime/index.js'
+import { dirname, join } from 'node:path'
+import {
+  HarnessLauncherContractFacade,
+  type RelayHostLauncher,
+  type RelayStatusDocument,
+} from '../relay-runtime/index.js'
 import { FileLockFacade, type FileLockLease } from '../state-repository/index.js'
 import type { ProxyInspection } from './proxy-diagnostics-facade.js'
 import type { ProxyRouteFailure } from './types.js'
@@ -31,6 +35,7 @@ export class HarnessHostAutostartFacade {
   private readonly lockFactory: () => HarnessHostAutostartLock
   private readonly accessPath: (path: string) => Promise<void>
   private readonly now: () => number
+  private readonly launcherContract = new HarnessLauncherContractFacade()
 
   constructor(
     private readonly descriptorFile: string,
@@ -107,17 +112,12 @@ export class HarnessHostAutostartFacade {
   }
 
   private async validateLauncher(status: RelayStatusDocument, launcher: RelayHostLauncher): Promise<ProxyRouteFailure | null> {
-    const entry = launcher.args[0]
-    const expectedEntry = entry !== undefined
-      && /(?:^|[\\/])(?:apps[\\/]cli|@deepseek-ai[\\/]dsh)[\\/]lib[\\/]bin\.js$/iu.test(entry)
-    const expectedArgs = entry !== undefined && launcher.args.length === 4
-      && launcher.args[1] === '--profile' && launcher.args[2] === status.profile && launcher.args[3] === '--no-open'
-    const expectedEnvironment = resolve(launcher.environment.DSH_HOME) === resolve(status.dshHome)
-      && launcher.environment.DSH_PROFILE === status.profile
-      && resolve(launcher.environment.DSH_RELAY_ENDPOINT_DESCRIPTOR) === resolve(this.descriptorFile)
-    if (!isAbsolute(launcher.command) || !/^node(?:\.exe)?$/iu.test(basename(launcher.command))
-      || entry === undefined || !isAbsolute(entry) || !expectedEntry || !expectedArgs
-      || !isAbsolute(launcher.cwd) || !expectedEnvironment) {
+    const validated = this.launcherContract.validate({
+      profile: status.profile,
+      dshHome: status.dshHome,
+      descriptorFile: this.descriptorFile,
+    }, launcher)
+    if (validated === null) {
       return routeFailure(
         'HOST_AUTO_START_UNAVAILABLE',
         'The recorded Harness launcher contract failed strict validation.',
@@ -125,7 +125,7 @@ export class HarnessHostAutostartFacade {
       )
     }
     try {
-      await Promise.all([this.accessPath(launcher.command), this.accessPath(entry), this.accessPath(launcher.cwd)])
+      await Promise.all(validated.accessiblePaths.map(path => this.accessPath(path)))
       return null
     } catch {
       return routeFailure(

@@ -1,6 +1,5 @@
 import { unlink } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import {
@@ -33,6 +32,7 @@ import {
 } from './permission-gateway/index.js'
 import { RelayFacade } from './relay-broker/index.js'
 import {
+  HarnessLauncherContractFacade,
   RelayRuntimeFacade,
   RelayRuntimePathError,
   type RelayHostLauncher,
@@ -89,6 +89,8 @@ type NativeHarnessContext = Context & HarnessPluginContext & {
   sessionController: NativeSessionController
   permissionPresets: NativePermissionPresets
 }
+
+const harnessLauncherContract = new HarnessLauncherContractFacade()
 
 const plugin = createHarnessPlugin<NativeHarnessContext>({
   schema: Schema,
@@ -273,18 +275,15 @@ function lifecycleStatus(
 }
 
 function captureHarnessLauncher(paths: RelayRuntimePaths): RelayHostLauncher | null {
-  const entry = process.argv[1]
-  if (entry === undefined || !isAbsolute(process.execPath) || !isAbsolute(entry) || !isAbsolute(process.cwd())) return null
-  return {
+  return harnessLauncherContract.capture({
     command: process.execPath,
-    args: [entry, '--profile', paths.profile, '--no-open'],
+    execArgv: process.execArgv,
+    entry: process.argv[1],
     cwd: process.cwd(),
-    environment: {
-      DSH_HOME: paths.dshHome,
-      DSH_PROFILE: paths.profile,
-      DSH_RELAY_ENDPOINT_DESCRIPTOR: paths.endpointDescriptorFile,
-    },
-  }
+    profile: paths.profile,
+    dshHome: paths.dshHome,
+    descriptorFile: paths.endpointDescriptorFile,
+  })
 }
 
 async function writeRelayStatus(status: { write(input: RelayStatusWriteInput): Promise<unknown> }, input: RelayStatusWriteInput): Promise<void> {

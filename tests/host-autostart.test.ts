@@ -39,6 +39,43 @@ test('auto-start launches one recorded Harness Web when the old owner is dead an
   assert.equal(launches, 1)
 })
 
+test('auto-start replays a recorded tsx ESM source launcher vector', async t => {
+  const root = await temporaryDirectory(t)
+  let launched: RelayHostLauncher | null = null
+  let ready = false
+  const launcher = sourceLauncher(root, true)
+  const dead = inspection(root, launcher, false)
+  const recovered = inspection(root, launcher, true)
+  const facade = createFacade(root, {
+    async spawnHost(actual) {
+      launched = actual
+      ready = true
+    },
+    async probePort() { return 'free' },
+  })
+
+  const result = await facade.recover(dead, async () => ready ? recovered : dead)
+
+  assert.equal(result.failure, null)
+  assert.deepEqual(launched, launcher)
+})
+
+test('auto-start rejects a raw Node source launcher contract without spawning', async t => {
+  const root = await temporaryDirectory(t)
+  let launches = 0
+  const dead = inspection(root, sourceLauncher(root, false), false)
+  const facade = createFacade(root, {
+    async spawnHost() { launches += 1 },
+    async probePort() { return 'free' },
+  })
+
+  const result = await facade.recover(dead, async () => dead)
+
+  assert.equal(result.failure?.reasonCode, 'HOST_AUTO_START_UNAVAILABLE')
+  assert.match(result.failure?.message ?? '', /failed strict validation/iu)
+  assert.equal(launches, 0)
+})
+
 test('auto-start fails closed without spawning when the Harness loopback port is occupied', async t => {
   const root = await temporaryDirectory(t)
   let launches = 0
@@ -105,6 +142,20 @@ function testLauncher(root: string): RelayHostLauncher {
   return {
     command: process.execPath,
     args: [join(root, 'apps', 'cli', 'lib', 'bin.js'), '--profile', 'web', '--no-open'],
+    cwd: root,
+    environment: {
+      DSH_HOME: root,
+      DSH_PROFILE: 'web',
+      DSH_RELAY_ENDPOINT_DESCRIPTOR: join(root, 'relay-endpoint.json'),
+    },
+  }
+}
+
+function sourceLauncher(root: string, includeLoader: boolean): RelayHostLauncher {
+  const entry = join(root, 'apps', 'cli', 'src', 'bin.ts')
+  return {
+    command: process.execPath,
+    args: [...(includeLoader ? ['--import', 'tsx/esm'] : []), entry, '--profile', 'web', '--no-open'],
     cwd: root,
     environment: {
       DSH_HOME: root,

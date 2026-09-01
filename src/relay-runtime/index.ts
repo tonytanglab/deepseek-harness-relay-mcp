@@ -1,6 +1,12 @@
 export { RelayRuntimeFacade } from './relay-runtime-facade.js'
 export { RelayStatusFacade } from './status-store.js'
 export {
+  HarnessLauncherContractFacade,
+  type HarnessLauncherCaptureInput,
+  type HarnessLauncherValidationInput,
+  type ValidatedHarnessLauncher,
+} from './harness-launcher-contract.js'
+export {
   RelayRuntimePathError,
   prepareRelayRuntimePaths,
   resolveRelayRuntimePaths,

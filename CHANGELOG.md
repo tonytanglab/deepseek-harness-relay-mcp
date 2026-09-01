@@ -2,6 +2,12 @@
 
 ## 0.2.9
 
+### 2026-09-01 22:14
+
+- 修复 embedded Harness 从源码启动时的自动恢复契约：发布启动器时保留官方 `node --import tsx/esm` 执行参数，避免 stdio proxy 重启为不带 loader 的 raw Node 并触发 Cordis `FiberState` 运行时导出错误。
+- 将启动向量捕获与严格校验收口到共享 Facade；构建后 `lib/bin.js` 启动保持不变，源码入口只接受明确的 tsx ESM loader，缺失 loader 或附带其它 Node 参数继续安全拒绝，不放宽自动启动边界。
+- 新增源码启动向量记录、状态持久化、带 loader 重启与 raw Node 拒绝回归，并同步更新中英文运行说明；聚焦 11 项测试、严格 TypeScript、构建与发布文件检查通过。全量 212 项测试中 209 项通过，另 3 项因本机 Windows Store `python.exe` launcher 返回 9009 而失败，与本次启动契约改动无关。
+
 ### 2026-09-01 09:33
 
 - 将 Harness Relay 委派契约收紧为 `path-reference-only`：主任务只传已授权工作区、文件/目录位置、审查或实施范围、验收条件与路由/权限元数据，由 Harness 在工作区内自行读取；`task`、文本 `content`、`steer_run` 与 `reply_run` 均禁止嵌入源码正文、diff、文件转储、源码编码或仓库归档。

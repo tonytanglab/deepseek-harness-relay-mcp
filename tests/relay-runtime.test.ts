@@ -4,11 +4,51 @@ import test from 'node:test'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
+  HarnessLauncherContractFacade,
   RelayRuntimePathError,
   RelayStatusFacade,
   prepareRelayRuntimePaths,
   resolveRelayRuntimePaths,
 } from '../src/relay-runtime/index.js'
+
+test('source launcher capture requires and persists the exact tsx ESM loader vector', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-relay-launcher-contract-'))
+  const entry = join(root, 'apps', 'cli', 'src', 'bin.ts')
+  const descriptorFile = join(root, 'relay-endpoint.json')
+  const capture = {
+    command: process.execPath,
+    entry,
+    cwd: root,
+    profile: 'web',
+    dshHome: root,
+    descriptorFile,
+  }
+  const contract = new HarnessLauncherContractFacade()
+
+  assert.equal(contract.capture({ ...capture, execArgv: [] }), null)
+  assert.equal(contract.capture({ ...capture, execArgv: ['--inspect', '--import', 'tsx/esm'] }), null)
+  const launcher = contract.capture({ ...capture, execArgv: ['--import', 'tsx/esm'] })
+  assert(launcher !== null)
+  assert.deepEqual(launcher.args, ['--import', 'tsx/esm', entry, '--profile', 'web', '--no-open'])
+
+  const status = new RelayStatusFacade(join(root, 'relay-status.json'))
+  await status.write({
+    state: 'ready',
+    authorityId: 'embedded-authority',
+    mode: 'embedded',
+    instanceId: 'embedded-authority',
+    ownerPid: process.pid,
+    processStartedAt: '2026-09-01T00:00:00.000Z',
+    ownerEpoch: 1,
+    hostIdentity: 'http://loopback:3080',
+    profile: 'web',
+    dshHome: root,
+    launcher,
+    lastError: null,
+  })
+  assert.deepEqual((await status.read())?.launcher?.args, launcher.args)
+  await rm(root, { recursive: true, force: true })
+})
 
 test('shared runtime resolver defaults blank home/profile values and isolates host state', async () => {
   const home = await mkdtemp(join(tmpdir(), 'dsh-relay-runtime-home-'))

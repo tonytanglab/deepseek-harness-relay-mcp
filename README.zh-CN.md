@@ -383,7 +383,7 @@ running ── status/wait/steer/cancel ──> succeeded | incomplete | failed 
 
 状态会经过 schema 校验、带所有者校验的跨进程锁和原子替换，并在支持的平台上使用限制性文件权限；旧写入者不能回退已停止服务、终态运行、待处理状态、操作或权限租约。损坏文件会被隔离而不是覆盖。默认不持久化提示词文本和图片字节。Relay 重启后会恢复运行与操作标识，并与 Harness 原生历史重新对账。对账得到的 Assistant 文本会按当前 turn 的事件顺序保留，不再只返回最后一条 Assistant 消息。活动运行在配置时间内没有持久进展时会进入 `needs_attention` 并给出 `attentionReason: run_stalled`；后续一旦出现新进展会自动恢复为 `running`。
 
-embedded Host 还会发布不含凭据的启动契约，仅记录绝对 Node/dsh 入口、profile、工作目录和 Relay 运行路径。遇到 `OWNER_DEAD` 或 Host 已正常停止时，stdio proxy 会先获取跨进程启动锁并复查状态，再确认已记录的回环端口为空闲、校验启动器结构和文件，最后用隐藏窗口和 `--no-open` 拉起 Harness。并发客户端只会收敛到一次启动；启动器缺失或无效、owner 状态未知、端口占用以及启动失败都会继续以明确诊断安全失败。
+embedded Host 还会发布不含凭据的启动契约，仅记录绝对 Node/dsh 入口、源码启动所需的官方 Node loader 参数、profile、工作目录和 Relay 运行路径。构建后的 `lib/bin.js` 入口继续使用普通 Node；`apps/cli/src/bin.ts` 入口必须保留精确的 tsx ESM loader 向量，raw Node 源码启动器会被拒绝。遇到 `OWNER_DEAD` 或 Host 已正常停止时，stdio proxy 会先获取跨进程启动锁并复查状态，再确认已记录的回环端口为空闲、校验启动器结构和文件，最后用隐藏窗口和 `--no-open` 拉起 Harness。并发客户端只会收敛到一次启动；启动器缺失或无效、owner 状态未知、端口占用以及启动失败都会继续以明确诊断安全失败。
 
 多个本地 MCP Server 进程可以共享一个状态文件；写入会按稳定标识串行化并合并。遗留锁会安全失败，而不会仅因时间过长就被删除。需要运行隔离时，再为不同客户端配置独立的 `DSH_RELAY_STATE_FILE`。
 

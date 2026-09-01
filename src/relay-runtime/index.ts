@@ -10,6 +10,7 @@ export type {
   RelayRuntimePaths,
   RelayRuntimePathSource,
   RelayRuntimeResolveInput,
+  RelayHostLauncher,
   RelayStatusDocument,
   RelayStatusError,
   RelayStatusState,

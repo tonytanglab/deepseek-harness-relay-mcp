@@ -46,10 +46,6 @@ try {
       external: [
         '@deepseek-ai/cordis',
         '@deepseek-ai/schemastery',
-        '@deepseek-ai/dsh-host-apiproxy',
-        '@deepseek-ai/dsh-host-webserver',
-        '@deepseek-ai/dsh-session',
-        '@deepseek-ai/dsh-permission-presets',
       ],
     }),
   ])

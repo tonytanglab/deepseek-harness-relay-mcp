@@ -14,9 +14,13 @@ test('Cordis plugin factory exposes native injects and disposes infrastructure w
   const lifecycle: string[] = []
   let installer: (() => Promise<() => Promise<void>> | AsyncIterable<() => void | Promise<void>, void, void>) | undefined
   const ctx: HarnessPluginContext = {
-    apiProxy: {},
+    typertGateway: {},
     webServer: {},
     sessions: {},
+    sessionController: {},
+    workspaceController: {},
+    settingsController: {},
+    agentPresets: {},
     permissionPresets: {},
     effect(install) {
       installer = install
@@ -43,7 +47,16 @@ test('Cordis plugin factory exposes native injects and disposes infrastructure w
   })
 
   assert.equal(plugin.name, 'harness-relay-mcp')
-  assert.deepEqual(plugin.inject, ['apiProxy', 'webServer', 'sessions', 'permissionPresets'])
+  assert.deepEqual(plugin.inject, [
+    'typertGateway',
+    'webServer',
+    'sessions',
+    'sessionController',
+    'workspaceController',
+    'settingsController',
+    'agentPresets',
+    'permissionPresets',
+  ])
   assert.equal(schema.fields.includes('token'), false)
   assert.deepEqual(schema.fields, [
     'route',
@@ -71,7 +84,8 @@ test('Cordis plugin factory exposes native injects and disposes infrastructure w
 test('Cordis plugin factory exposes an abort disposer before authority startup settles', async () => {
   let installer: (() => Promise<() => Promise<void>> | AsyncIterable<() => void | Promise<void>, void, void>) | undefined
   const ctx: HarnessPluginContext = {
-    apiProxy: {}, webServer: {}, sessions: {}, permissionPresets: {},
+    typertGateway: {}, webServer: {}, sessions: {}, sessionController: {},
+    workspaceController: {}, settingsController: {}, agentPresets: {}, permissionPresets: {},
     effect(install) { installer = install; return () => {} },
   }
   const gateway = new HarnessGatewayFacade(new Proxy({}, {
@@ -111,7 +125,10 @@ test('headless profile preflight blocks before profile mutation', () => {
   })
   assert.deepEqual(preflightHarnessProfile({
     profile: 'web',
-    availableServices: ['apiProxy', 'sessions', 'permissionPresets'],
+    availableServices: [
+      'typertGateway', 'sessions', 'sessionController', 'workspaceController',
+      'settingsController', 'agentPresets', 'permissionPresets',
+    ],
   }), {
     ready: false,
     code: 'HARNESS_SERVICES_MISSING',
@@ -120,7 +137,10 @@ test('headless profile preflight blocks before profile mutation', () => {
   })
   assert.equal(preflightHarnessProfile({
     profile: 'web',
-    availableServices: ['apiProxy', 'webServer', 'sessions', 'permissionPresets'],
+    availableServices: [
+      'typertGateway', 'webServer', 'sessions', 'sessionController', 'workspaceController',
+      'settingsController', 'agentPresets', 'permissionPresets',
+    ],
   }).ready, true)
 })
 

@@ -18,7 +18,25 @@ export class HostRpcError extends Error {
  * @returns Whether retrying or reconciling may produce a different result.
  */
 export function isTransientHostCode(code: string): boolean {
-  return /^(?:HOST[_-])?(?:TIMEOUT|UNAVAILABLE|TRANSPORT|RATE[_-]LIMIT|TOO[_-]MANY|BUSY|OVERLOADED|INTERNAL|TEMPORARY)(?:[_-]|$)/iu.test(code)
+  if (/^(?:HOST[_-])?(?:TIMEOUT|UNAVAILABLE|TRANSPORT|RATE[_-]LIMIT|TOO[_-]MANY|BUSY|OVERLOADED|INTERNAL|TEMPORARY)(?:[_-]|$)/iu.test(code)) {
+    return true
+  }
+  return /^gateway\/(?:internal|(?:service|context|lookup|invocation)-unavailable|timeout|transport|rate-limit|too-many|busy|overloaded|temporary)(?:[/_-]|$)/iu.test(code)
+}
+
+/** Normalize a direct Harness Typert invocation failure. */
+export function typertGatewayError(operation: string, error: unknown): HostRpcError {
+  if (error instanceof HostRpcError) return error
+  const code = stringProperty(error, 'code') ?? 'HOST_TYPERT_GATEWAY'
+  const message = error instanceof Error ? error.message : String(error)
+  const retryable = isTransientHostCode(code)
+  return new HostRpcError(
+    `${operation} failed: ${code}: ${message}`,
+    !retryable,
+    code,
+    retryable,
+    objectProperty(error, 'details'),
+  )
 }
 
 /**
@@ -35,4 +53,15 @@ export function inProcessTransportError(operation: string, error: unknown): Host
     ? 'HOST_TIMEOUT'
     : 'HOST_IN_PROCESS_TRANSPORT'
   return new HostRpcError(`${operation} transport failed: ${message}`, false, code, true)
+}
+
+function stringProperty(value: unknown, key: string): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const candidate = Reflect.get(value, key) as unknown
+  return typeof candidate === 'string' ? candidate : undefined
+}
+
+function objectProperty(value: unknown, key: string): unknown {
+  if (typeof value !== 'object' || value === null) return undefined
+  return Reflect.get(value, key) as unknown
 }

@@ -11,12 +11,13 @@ import { withHostPollContract } from './host-poll-contract.js'
 
 const id = z.uuid()
 const idempotencyKey = z.string().trim().min(1).max(128).optional()
+const PATH_REFERENCE_ONLY = 'Task parameters are path-reference-only: provide the authorized workspace, file or directory locations, scope, and acceptance criteria. Never embed source text, diffs, file dumps, encoded source, or repository archives. Harness reads named files from the authorized workspace itself. This rule is identical for read-only and write-capable permissions.'
 
 export function createServer(relay: RelayFacade, config: RelayConfig, monitoring: MonitoringFacade = new MonitoringFacade(), clientPrincipalId: string = config.clientPrincipalId): McpServer {
   const setup = new ClientSetupFacade()
   const server = new McpServer(
     { name: MCP_SERVER_ID, version: __DSH_RELAY_VERSION__ },
-    { instructions: 'Use DeepSeek Harness native sessions and durable events. Select explicit provider/model/reasoning/preset/permission parameters before the first task, share a verified stable session URL on the first run, then call wait_run until a terminal status. A single wait_run timeout is a slice, not completion. Do not conclude the host turn, skip assistantText, or treat unrelated shell notifications as authorization to stop while status is running or unknown. After a terminal success, consume assistantText and independently verify; if the user asked to review then fix, the calling agent applies accepted findings only after the run is terminal.' },
+    { instructions: `Use DeepSeek Harness native sessions and durable events. ${PATH_REFERENCE_ONLY} Select explicit provider/model/reasoning/preset/permission parameters before the first task, share a verified stable session URL on the first run, then call wait_run until a terminal status. A single wait_run timeout is a slice, not completion. Do not conclude the host turn, skip assistantText, or treat unrelated shell notifications as authorization to stop while status is running or unknown. After a terminal success, consume assistantText and independently verify; if the user asked to review then fix, the calling agent applies accepted findings only after the run is terminal.` },
   )
 
   server.registerTool('doctor', {
@@ -90,11 +91,11 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
 
   server.registerTool('start_run', {
     title: 'Dispatch a Harness run',
-    description: 'Create or reuse a native Harness session, select provider/model/reasoning, agent preset, and native permission preset, then submit the first task and return a stable session link. Sharing webUrl is not completion: keep wait_run until a terminal status, then consume assistantText.',
+    description: `Create or reuse a native Harness session, select provider/model/reasoning, agent preset, and native permission preset, then submit the first task and return a stable session link. ${PATH_REFERENCE_ONLY} Sharing webUrl is not completion: keep wait_run until a terminal status, then consume assistantText.`,
     inputSchema: {
-      task: z.string().min(1).max(config.maxTaskCharacters).optional(),
-      content: z.array(promptPart(config.maxTaskCharacters)).min(1).optional(),
-      workspace: z.string().min(1),
+      task: delegatedTask(config.maxTaskCharacters).optional(),
+      content: z.array(promptPart(config.maxTaskCharacters)).min(1).describe(PATH_REFERENCE_ONLY).optional(),
+      workspace: z.string().min(1).describe('Authorized absolute Harness workspace root; Harness reads named in-scope files from here.'),
       sessionId: z.string().min(1).optional(),
       sessionMode: z.enum(['fresh', 'latest-idle']).optional(),
       provider: z.string().trim().min(1).optional(),
@@ -125,11 +126,11 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
 
   server.registerTool('start_review', {
     title: 'Dispatch a read-only Harness review',
-    description: 'Create or reuse a native Harness session with the permission preset fixed to read-only, then return a stable session link. After start succeeds, share webUrl and keep wait_run until succeeded/failed/cancelled/needs_attention. The calling agent MUST read assistantText before claiming the review is done. If the parent user asked to review then fix, apply accepted findings only after the run is terminal; do not treat a still-running review as finished.',
+    description: `Create or reuse a native Harness session with the permission preset fixed to read-only, then return a stable session link. ${PATH_REFERENCE_ONLY} After start succeeds, share webUrl and keep wait_run until succeeded/failed/cancelled/needs_attention. The calling agent MUST read assistantText before claiming the review is done. If the parent user asked to review then fix, apply accepted findings only after the run is terminal; do not treat a still-running review as finished.`,
     inputSchema: {
-      task: z.string().min(1).max(config.maxTaskCharacters).optional(),
-      content: z.array(promptPart(config.maxTaskCharacters)).min(1).optional(),
-      workspace: z.string().min(1),
+      task: delegatedTask(config.maxTaskCharacters).optional(),
+      content: z.array(promptPart(config.maxTaskCharacters)).min(1).describe(PATH_REFERENCE_ONLY).optional(),
+      workspace: z.string().min(1).describe('Authorized absolute Harness workspace root; Harness reads named in-scope files from here.'),
       sessionId: z.string().min(1).optional(),
       sessionMode: z.enum(['fresh', 'latest-idle']).optional(),
       provider: z.string().trim().min(1).optional(),
@@ -156,8 +157,8 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
   }, clientPrincipalId).then(withHostPollContract)))
 
   server.registerTool('steer_run', {
-    title: 'Steer a Harness run', description: 'Durably insert a correction into an active run.',
-    inputSchema: { runId: id, task: z.string().min(1).max(config.maxTaskCharacters).optional(), content: z.array(promptPart(config.maxTaskCharacters)).min(1).optional(), idempotencyKey },
+    title: 'Steer a Harness run', description: `Durably insert a correction into an active run. ${PATH_REFERENCE_ONLY}`,
+    inputSchema: { runId: id, task: delegatedTask(config.maxTaskCharacters).optional(), content: z.array(promptPart(config.maxTaskCharacters)).min(1).describe(PATH_REFERENCE_ONLY).optional(), idempotencyKey },
     annotations: runAction,
   }, guarded(input => relay.steerRun(input.runId, {
     ...(input.task === undefined ? {} : { task: input.task }),
@@ -232,11 +233,11 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
 
   server.registerTool('reply_run', {
     title: 'Continue a Harness session',
-    description: 'Submit a new queued turn to the completed run session, optionally selecting a different model, and track it as a new run.',
+    description: `Submit a new queued turn to the completed run session, optionally selecting a different model, and track it as a new run. ${PATH_REFERENCE_ONLY}`,
     inputSchema: {
       runId: id,
-      task: z.string().min(1).max(config.maxTaskCharacters).optional(),
-      content: z.array(promptPart(config.maxTaskCharacters)).min(1).optional(),
+      task: delegatedTask(config.maxTaskCharacters).optional(),
+      content: z.array(promptPart(config.maxTaskCharacters)).min(1).describe(PATH_REFERENCE_ONLY).optional(),
       provider: z.string().trim().min(1).optional(),
       model: z.string().trim().min(1).optional(),
       reasoningEffort: z.string().trim().min(1).optional(),
@@ -271,9 +272,13 @@ const runAction = { readOnlyHint: false, destructiveHint: true, idempotentHint: 
 const reviewAction = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const
 function mutable(idempotent: boolean) { return { readOnlyHint: false, destructiveHint: false, idempotentHint: idempotent, openWorldHint: true } as const }
 
+function delegatedTask(maxCharacters: number) {
+  return z.string().min(1).max(maxCharacters).describe(PATH_REFERENCE_ONLY)
+}
+
 function promptPart(maxCharacters: number) {
   return z.discriminatedUnion('type', [
-    z.object({ type: z.literal('text'), text: z.string().max(maxCharacters) }),
+    z.object({ type: z.literal('text'), text: z.string().max(maxCharacters).describe(PATH_REFERENCE_ONLY) }),
     z.object({ type: z.literal('image'), mediaType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']), data: z.string().min(1), name: z.string().optional() }),
   ])
 }

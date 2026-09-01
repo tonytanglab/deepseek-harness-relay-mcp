@@ -62,13 +62,13 @@ Harness Relay MCP 是独立的第三方项目，并非由 DeepSeek AI 开发、�
 - 持久保存运行标识，MCP Server 重启后可恢复监控。
 - 返回稳定的 Harness Web 会话链接；随附 Skill 会在分享前验证页面确实可见。
 - 兼容 Codex、Claude Code、OpenCode、Cursor 及其他符合标准的 MCP 客户端。
-- 内部 bundle 使用官方 InProcess ApiProxy 和原生权限服务；外部 Agent 通过认证 HTTP 或无状态 stdio proxy 调用。
+- 内部 bundle 使用 Harness 0.1.2 的直接 Typert Gateway 和原生权限服务；外部 Agent 通过认证 HTTP 或无状态 stdio proxy 调用。
 - 保留独立 `dsh-relay` 模式用于旧版 Harness 和显式回滚。
 
 ## 运行要求
 
 - Node.js `^22.19` 或 `>=24`。
-- 内部模式要求 DeepSeek Harness `0.1.0-rc.7` 兼容系列的 `web` profile，并只允许 `127.0.0.1` 绑定。
+- 内部模式要求 DeepSeek Harness `>=0.1.2-alpha.2 <0.2.0`、`web` profile，并只允许 `127.0.0.1` 绑定。Relay 0.2.6 及更早版本依赖已移除的 rc.7 ApiProxy 接口，无法在此 Harness 版本线加载。
 - 独立兼容模式要求已在本机回环 HTTP 地址运行的 DeepSeek Harness Web Host。
 - 目标工作区必须已在 Harness 中登记，或属于明确配置的允许根目录。
 
@@ -139,7 +139,7 @@ Codex 插件 manifest 必须同时引用 Skill 和包内 MCP 声明：
 }
 ```
 
-`cwd: "."` 由 Codex 解析到当前已安装插件的版本根目录。不要写开发机绝对路径或 `%USERPROFILE%\.codex\plugins\cache\...` 版本缓存路径；不要在 Codex 用户 `config.toml` 再注册第二份同名 MCP。最重要的是，Codex 只能启动 `dsh-relay-proxy.mjs`：不能指向 `dsh-relay-harness.mjs`（Harness 内部 bundle），不能指向会另建独立控制面的 `dsh-relay.mjs`，也不能由 Codex 再启动第二个 Harness Web。proxy 通过 `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json` 自动发现已经运行的内部 authority，客户端配置不保存 bearer token。
+`cwd: "."` 由 Codex 解析到当前已安装插件的版本根目录。不要写开发机绝对路径或 `%USERPROFILE%\.codex\plugins\cache\...` 版本缓存路径；不要在 Codex 用户 `config.toml` 再注册第二份同名 MCP。最重要的是，Codex 只能启动 `dsh-relay-proxy.mjs`：不能指向 `dsh-relay-harness.mjs`（Harness 内部 bundle），不能指向会另建独立控制面的 `dsh-relay.mjs`，也不能由 Agent 手工启动第二个 Harness Web。proxy 通过 `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json` 发现 authority；从 0.2.8 起，只有旧 owner 可证明已死亡且回环端口确认空闲时，proxy 才会复用上一任 embedded Host 发布的精确启动契约安全拉起 Harness。端口已占用或无法探测时仍安全失败。客户端配置不保存 bearer token。
 
 安装后新建 Codex 任务，正确调用链是：
 
@@ -149,7 +149,7 @@ doctor → list_workspaces → list_capabilities
   → wait_run（循环到终态）→ 读取 assistantText → 主进程复核
 ```
 
-用户明确指定 Harness/模型审核当前或命名的已注册工作区，即授权 Harness 在该范围内自行读取。Codex 只通过内置 MCP 传递工作区路径、任务、模型、权限和幂等信息，不应把源码正文复制进 MCP 参数，也不应误报为“Codex 上传源码”。这项授权不包含凭据、秘密、无关路径或写入。只有用户明确要求 Harness 修改、修复、实现或重构时，才调用 `start_run` 并选择 `permissionPreset: "workspace-write"`；单纯“调用 Harness”仍默认 `start_review`。
+用户明确指定 Harness/模型审核当前或命名的已注册工作区，即授权 Harness 在该范围内自行读取。主任务只通过内置 MCP 传递工作区、文件/目录位置、审查或实施范围、验收条件以及路由/权限元数据；Harness 必须在已授权工作区内自行读取。无论使用 `read-only` 还是 `workspace-write`，都禁止把源码正文、diff、文件转储、源码编码或仓库归档嵌入 `task`、文本 `content`、`steer_run` 或 `reply_run` 参数，也不应误报为“Codex 上传源码”。写权限只改变 Harness 可执行的操作，不改变源码传递边界。这项授权不包含凭据、秘密或无关路径。只有用户明确要求 Harness 修改、修复、实现或重构时，才调用 `start_run` 并选择 `permissionPreset: "workspace-write"`；单纯“调用 Harness”仍默认 `start_review`。
 
 安装后重启 Codex，并新建一个 Codex 任务，让新任务加载 MCP Server 和 Skill。可在新任务中要求：
 
@@ -176,8 +176,8 @@ codex plugin add deepseek-harness-relay@harness-relay
 列出检测结果、缺失依赖、拟执行命令和影响范围，获得我确认后再操作。
 Harness 侧只能使用 dsh plugin --profile web add harness-relay-mcp 安装内部 bundle，不修改 DeepSeek Harness 源码，不把 Relay 添加为 Harness MCP client。
 Codex 侧使用仓库 Marketplace tonytanglab/deepseek-harness-relay-mcp，安装 deepseek-harness-relay@harness-relay。
-Codex 插件 manifest 必须引用包内 .mcp.json；.mcp.json 只能以 cwd "." 启动 node ./dist/dsh-relay-proxy.mjs。不要指向 dsh-relay-harness.mjs 或 dsh-relay.mjs，不要在用户 config.toml 重复注册 MCP，也不要启动第二个 Harness Web。
-当我明确指定 Harness/模型审核当前或命名的已注册工作区时，视为授权 Harness 在该范围内自行读取；Codex 只传 workspace、任务、模型、权限和幂等信息，不复制源码正文。若我明确要求 Harness 修改代码，使用 start_run + workspace-write；普通审核使用 start_review。
+Codex 插件 manifest 必须引用包内 .mcp.json；.mcp.json 只能以 cwd "." 启动 node ./dist/dsh-relay-proxy.mjs。不要指向 dsh-relay-harness.mjs 或 dsh-relay.mjs，不要在用户 config.toml 重复注册 MCP，也不要由 Agent 手工启动第二个 Harness Web；旧 owner 已死亡时交给 proxy 执行受控单实例恢复。
+当我明确指定 Harness/模型审核或修改当前或命名的已注册工作区时，Harness 在该范围内自行读取；Codex 只传 workspace、文件/目录位置、审查或实施范围、验收条件、模型、权限和幂等信息。read-only 与 workspace-write 都禁止把源码正文、diff、文件转储、源码编码或仓库归档放入 task/content/steer_run/reply_run 参数。若我明确要求 Harness 修改代码，使用 start_run + workspace-write；普通审核使用 start_review。
 安装后验证 dsh --profile web --dump-config、codex plugin list，并提醒我重启 Codex、新建任务后运行 doctor 与 list_workspaces。遇到错误时停止并报告原始错误，不扩大权限、不删除现有配置。
 ```
 
@@ -235,7 +235,7 @@ proxy 默认读取 `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json`；未�
   "tool": "start_review",
   "arguments": {
     "workspace": "D:/work/project",
-    "task": "审查此工作区，只返回可复现的发现。",
+    "task": "读取 README.zh-CN.md、skills/delegate-to-deepseek-harness 与 src/mcp-server；审查任务契约和权限边界，只返回可复现的发现。",
     "provider": "kimi-coding",
     "model": "k3",
     "reasoningEffort": "max",
@@ -291,8 +291,8 @@ running ── status/wait/steer/cancel ──> succeeded | incomplete | failed 
 | 参数 | 是否必需 | 说明 |
 | --- | --- | --- |
 | `workspace` | 是 | Relay 策略允许的绝对工作区路径。 |
-| `task` | 两种提示词形式选一 | 纯文本任务，与 `content` 互斥。 |
-| `content` | 两种提示词形式选一 | 有序文本/图片块，与 `task` 互斥。 |
+| `task` | 两种提示词形式选一 | 仅包含文件/目录位置、审查或实施范围与验收条件的纯文本任务；禁止源码正文、diff、文件转储、源码编码或仓库归档；与 `content` 互斥。 |
+| `content` | 两种提示词形式选一 | 同样遵循仅位置/范围契约的有序文本/图片块；图片只用于任务本身要求的非工作区证据，不能替代 Harness 自行读取工作区源码；与 `task` 互斥。 |
 | `sessionId` | 否 | 复用所选工作区内的空闲会话。 |
 | `sessionMode` | 否 | `fresh` 或 `latest-idle`；默认为 `fresh`，不能与 `sessionId` 同时使用。 |
 | `provider` | 与 `model` 同时提供 | `list_capabilities` 返回的准确 Provider ID。 |
@@ -329,11 +329,11 @@ running ── status/wait/steer/cancel ──> succeeded | incomplete | failed 
 
 | Preset | 适用场景 |
 | --- | --- |
-| `read-only` | 审查、诊断、研究、比较和规划。 |
-| `workspace-write` | 仅在授权工作区内实施修改。 |
+| `read-only` | 审查、诊断、研究、比较和规划；任务参数只传位置与范围。 |
+| `workspace-write` | 仅在授权工作区和写路径内实施修改；仍只传位置与范围，不传源码正文。 |
 | `danger-full-access` | Harness 完全访问；仅在调用方明确授权时使用。 |
 
-DSH Relay 通过 `commands/execute` 调用 Harness 原生 `/permission` 命令，并在提交首条任务提示词前核验会话投影。提示词中的文字声明不会被当作权限边界。
+在 embedded 模式下，DSH Relay 会在需要时激活目标 Session，直接调用原生权限服务，并在提交首条任务提示词前确认最终 preset。提示词中的文字声明不会被当作权限边界；权限 preset 也不会放宽仅位置/范围的任务传递契约。
 
 ## MCP 工具
 
@@ -342,7 +342,7 @@ DSH Relay 通过 `commands/execute` 调用 Harness 原生 `/permission` 命令�
 | `doctor` | 检查 Relay 包、Host 连接、工作区策略和持久状态。 |
 | `setup_plan` | 生成经过验证且不写入磁盘的客户端配置补丁。 |
 | `setup_doctor` | 将 setup 计划和调用方提供的探针结果转换为机器可读报告。 |
-| `start_service` | 将授权工作区附加到现有 Harness Host。 |
+| `start_service` | 将授权工作区附加到 Harness；必要时 proxy 会先执行受控 Host 恢复。 |
 | `open_service` | 打开 Host 根地址。 |
 | `list_services` | 列出已恢复的工作区附加记录。 |
 | `list_workspaces` | 列出用于路由的 Harness 原生工作区注册表。 |
@@ -383,6 +383,8 @@ DSH Relay 通过 `commands/execute` 调用 Harness 原生 `/permission` 命令�
 
 状态会经过 schema 校验、带所有者校验的跨进程锁和原子替换，并在支持的平台上使用限制性文件权限；旧写入者不能回退已停止服务、终态运行、待处理状态、操作或权限租约。损坏文件会被隔离而不是覆盖。默认不持久化提示词文本和图片字节。Relay 重启后会恢复运行与操作标识，并与 Harness 原生历史重新对账。对账得到的 Assistant 文本会按当前 turn 的事件顺序保留，不再只返回最后一条 Assistant 消息。活动运行在配置时间内没有持久进展时会进入 `needs_attention` 并给出 `attentionReason: run_stalled`；后续一旦出现新进展会自动恢复为 `running`。
 
+embedded Host 还会发布不含凭据的启动契约，仅记录绝对 Node/dsh 入口、profile、工作目录和 Relay 运行路径。遇到 `OWNER_DEAD` 或 Host 已正常停止时，stdio proxy 会先获取跨进程启动锁并复查状态，再确认已记录的回环端口为空闲、校验启动器结构和文件，最后用隐藏窗口和 `--no-open` 拉起 Harness。并发客户端只会收敛到一次启动；启动器缺失或无效、owner 状态未知、端口占用以及启动失败都会继续以明确诊断安全失败。
+
 多个本地 MCP Server 进程可以共享一个状态文件；写入会按稳定标识串行化并合并。遗留锁会安全失败，而不会仅因时间过长就被删除。需要运行隔离时，再为不同客户端配置独立的 `DSH_RELAY_STATE_FILE`。
 
 ## 会话链接
@@ -400,6 +402,8 @@ HTTP 200 只能证明 Host 已响应，不能证明超长实时对话已经完�
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `DSH_RELAY_HOST_URL` | `http://127.0.0.1:3080/` | 本机回环 Harness Host 地址。 |
+| `DSH_RELAY_AUTO_START` | `true` | owner 与端口安全检查通过后，允许 stdio proxy 重启上一任 Harness Web 启动器。 |
+| `DSH_RELAY_AUTO_START_TIMEOUT_MS` | `120000` | 等待受控 Host 恢复发布 ready Relay 端点的最长时间。 |
 | `DSH_RELAY_ALLOWED_WORKSPACE_ROOTS` | Harness 工作区目录 | 操作系统分隔的额外授权绝对根目录列表；未配置时只接受 Harness 已登记工作区。 |
 | `DSH_RELAY_STATE_FILE` | `%LOCALAPPDATA%/dsh-relay/state.json` | Relay 持久状态位置。 |
 | `DSH_RELAY_PERSIST_PROMPT_TEXT` | `false` | 明确接受本地留存时持久化提示词摘要。 |
@@ -429,7 +433,7 @@ HTTP 200 只能证明 Host 已响应，不能证明超长实时对话已经完�
 
 ## 与 Harness 插件标准的边界
 
-Harness Relay MCP 采用双层兼容结构：`harness-relay-mcp` 包根入口是遵循 Harness/Cordis 标准的树外内部 bundle，导出 `Config/apply(ctx)` 并通过 `dsh.bundle` 与 `cordis.patch.yml` 安装；外部 Agent 则通过认证 HTTP 或无业务状态的 proxy 使用同一内部 authority。standalone 入口只作为兼容和回滚路径。整个方案不复制或修改 Harness 产品源码。
+Harness Relay MCP 采用双层兼容结构：`harness-relay-mcp` 包根入口是遵循 Harness/Cordis 标准的树外内部 bundle，导出 `Config/apply(ctx)` 并通过 `dsh.bundle` 与 `cordis.patch.yml` 安装。0.2.9 绑定 0.1.2 Host 服务（`typertGateway`、Session/Workspace/Settings controllers、Agent Presets、WebServer 和 Permission Presets），将 `session.follow/page` 与 `workspace.follow` 转换为 Relay 语义网关；已移除的 rc.8 mux stream 不可用时，仍以持久历史轮询作为权威对账路径。外部 Agent 通过认证 HTTP 或无业务状态的 proxy 使用同一内部 authority，standalone 入口只作为兼容和回滚路径。整个方案不复制或修改 Harness 产品源码。
 
 参见 DeepSeek Harness 官方文档：[创建 Harness 插件](https://deepseek-harness.github.io/deepseek-harness/develop/basic/)和[发布 bundle](https://deepseek-harness.github.io/deepseek-harness/develop/basic/publish)。
 

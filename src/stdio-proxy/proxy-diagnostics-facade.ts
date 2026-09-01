@@ -66,7 +66,7 @@ export class ProxyDiagnosticsFacade {
         'OWNER_DEAD',
         `Embedded Relay owner PID ${ownerProbe.processId} is no longer running.`,
         true,
-        'Start or reload the Harness web profile; Relay will not restart or stop the shared Host process.',
+        'The stdio proxy may restart the recorded Harness Web launcher only when the loopback port is free; otherwise start the profile manually.',
       ), ownerProbe)
     }
     if (ownerProbe.state === 'unknown') {

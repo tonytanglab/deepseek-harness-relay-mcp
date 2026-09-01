@@ -1,76 +1,72 @@
 #!/usr/bin/env python3
-"""Build a strict UTF-8 manifest for a bounded DeepSeek Harness task."""
+"""Build a path-reference-only contract for a bounded DeepSeek Harness task."""
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import sys
 
 
-TEXT_SUFFIXES = {
-    ".c", ".cc", ".cpp", ".cs", ".css", ".go", ".h", ".html", ".java",
-    ".js", ".json", ".jsx", ".kt", ".md", ".mjs", ".py", ".rs", ".scss",
-    ".sh", ".sql", ".toml", ".ts", ".tsx", ".txt", ".xml", ".yaml", ".yml",
-}
-DEFAULT_PATHS = ("AGENTS.md", "README.md", "CHANGELOG.md", "docs")
+PERMISSION_MODES = ("read-only", "workspace-write", "danger-full-access")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("workspace", help="Repository root containing the delegated task")
+    parser.add_argument("workspace", help="Authorized Harness workspace root")
     parser.add_argument(
         "--path",
         action="append",
         dest="paths",
-        help="Relative file or directory to include; repeatable",
+        required=True,
+        help="Relative file or directory Harness should inspect; repeatable; use . for the workspace root",
     )
-    parser.add_argument("--baseline-label", default="current-worktree")
-    parser.add_argument("--max-bytes", type=int, default=2_000_000)
+    parser.add_argument(
+        "--scope",
+        required=True,
+        help="Single-line review or implementation scope; never paste source text here",
+    )
+    parser.add_argument(
+        "--exclude-path",
+        action="append",
+        default=[],
+        help="Relative path excluded from the delegated scope; repeatable",
+    )
+    parser.add_argument(
+        "--write-path",
+        action="append",
+        default=[],
+        help="Relative path Harness may modify; repeatable and valid only for a write-capable mode",
+    )
+    parser.add_argument("--permission-mode", choices=PERMISSION_MODES, default="read-only")
     return parser.parse_args()
 
 
-def ensure_within(root: Path, candidate: Path) -> Path:
-    resolved = candidate.resolve(strict=True)
+def normalize_location(root: Path, value: str, *, must_exist: bool) -> str:
+    if not value or "\0" in value:
+        raise ValueError("locations must be non-empty and contain no NUL")
+    resolved = (root / value).resolve(strict=must_exist)
     try:
-        resolved.relative_to(root)
+        relative = resolved.relative_to(root)
     except ValueError as exc:
-        raise ValueError(f"path escapes workspace: {candidate}") from exc
-    return resolved
+        raise ValueError(f"path escapes workspace: {value}") from exc
+    return relative.as_posix() or "."
 
 
-def iter_files(root: Path, requested: list[str]) -> list[Path]:
-    found: set[Path] = set()
-    for item in requested:
-        target = ensure_within(root, root / item)
-        if target.is_file():
-            if target.suffix.lower() in TEXT_SUFFIXES:
-                found.add(target)
-            continue
-        for candidate in target.rglob("*"):
-            if candidate.is_file() and candidate.suffix.lower() in TEXT_SUFFIXES:
-                found.add(ensure_within(root, candidate))
-    return sorted(found, key=lambda value: value.relative_to(root).as_posix())
+def normalize_locations(root: Path, values: list[str], *, must_exist: bool) -> list[str]:
+    return list(dict.fromkeys(normalize_location(root, value, must_exist=must_exist) for value in values))
 
 
-def describe_file(root: Path, path: Path, max_bytes: int) -> dict[str, object]:
-    raw = path.read_bytes()
-    relative = path.relative_to(root).as_posix()
-    if len(raw) > max_bytes:
-        raise ValueError(f"file exceeds --max-bytes: {relative}")
-    if raw.startswith(b"\xef\xbb\xbf"):
-        raise ValueError(f"UTF-8 BOM is forbidden: {relative}")
-    content = raw.decode("utf-8", errors="strict")
-    if "\r" in content:
-        raise ValueError(f"CR line ending is forbidden: {relative}")
-    return {
-        "path": relative,
-        "bytes": len(raw),
-        "lines": len(content.splitlines()),
-        "sha256": hashlib.sha256(raw).hexdigest(),
-    }
+def validate_scope(value: str) -> str:
+    scope = value.strip()
+    if not scope:
+        raise ValueError("--scope must not be empty")
+    if len(scope) > 2_000:
+        raise ValueError("--scope exceeds 2000 characters")
+    if "\n" in scope or "\r" in scope or "```" in scope:
+        raise ValueError("--scope must be concise single-line instructions, not embedded source text")
+    return scope
 
 
 def main() -> int:
@@ -78,15 +74,23 @@ def main() -> int:
     root = Path(args.workspace).resolve(strict=True)
     if not root.is_dir():
         raise ValueError("workspace must be a directory")
-    requested = args.paths or list(DEFAULT_PATHS)
-    files = [describe_file(root, path, args.max_bytes) for path in iter_files(root, requested)]
+
+    if args.permission_mode == "read-only" and args.write_path:
+        raise ValueError("--write-path is forbidden in read-only mode")
+    if args.permission_mode != "read-only" and not args.write_path:
+        raise ValueError("write-capable modes require at least one --write-path")
+
     payload = {
-        "schemaVersion": 1,
-        "baselineLabel": args.baseline_label,
+        "schemaVersion": 2,
+        "sourceTransferPolicy": "path-reference-only",
         "workspaceRoot": str(root),
-        "includedPaths": requested,
-        "fileCount": len(files),
-        "files": files,
+        "permissionMode": args.permission_mode,
+        "scope": validate_scope(args.scope),
+        "locations": {
+            "include": normalize_locations(root, args.paths, must_exist=True),
+            "exclude": normalize_locations(root, args.exclude_path, must_exist=False),
+            "write": normalize_locations(root, args.write_path, must_exist=False),
+        },
     }
     sys.stdout.reconfigure(encoding="utf-8")
     json.dump(payload, sys.stdout, ensure_ascii=False, indent=2)

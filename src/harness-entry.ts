@@ -1,8 +1,7 @@
 import { unlink } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { InProcessApiClient, toFetchHandler } from '@deepseek-ai/dsh-host-apiproxy'
+import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import Schema from '@deepseek-ai/schemastery'
 import {
   AuthorityRegistryFacade,
@@ -14,13 +13,13 @@ import {
 import { resolveConfig } from './config.js'
 import { EventMonitoringFacade, type EventMonitoringNotice } from './event-monitoring/index.js'
 import {
-  InProcessDispatchHandler,
-  createInProcessHarnessGateway,
-  type InProcessApiClientPort,
+  createTypertHarnessGateway,
+  type TypertGatewayPort,
 } from './harness-gateway/index.js'
 import {
   createHarnessPlugin,
   preflightHarnessProfile,
+  REQUIRED_HARNESS_SERVICES,
   type EmbeddedRelayAdapters,
   type HarnessPluginContext,
 } from './harness-plugin/index.js'
@@ -36,6 +35,7 @@ import { RelayFacade } from './relay-broker/index.js'
 import {
   RelayRuntimeFacade,
   RelayRuntimePathError,
+  type RelayHostLauncher,
   type RelayRuntimePaths,
   type RelayStatusError,
   type RelayStatusWriteInput,
@@ -55,8 +55,19 @@ class RelayStartupError extends Error {
   }
 }
 
+interface NativeSession {
+  readonly events: readonly unknown[]
+}
+
 interface NativeSessionStore {
-  get(id: ReturnType<typeof SessionId>): Session | undefined
+  get(id: string): NativeSession | undefined
+}
+
+interface NativeSessionController {
+  resolveAgent(sessionId: string): Promise<
+    | { agent: { session: NativeSession } }
+    | { error: { message: string } }
+  >
 }
 
 interface NativeWebServer {
@@ -69,12 +80,13 @@ interface NativeWebServer {
   }): () => void
 }
 
-interface NativePermissionPresets extends InProcessPermissionPresetPort<Session, Session['events'][number]> {}
+interface NativePermissionPresets extends InProcessPermissionPresetPort<NativeSession> {}
 
 type NativeHarnessContext = Context & HarnessPluginContext & {
-  apiProxy: Parameters<typeof toFetchHandler>[0]
+  typertGateway: TypertGatewayPort
   webServer: NativeWebServer
   sessions: NativeSessionStore
+  sessionController: NativeSessionController
   permissionPresets: NativePermissionPresets
 }
 
@@ -82,14 +94,17 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
   schema: Schema,
   createAdapters(ctx): EmbeddedRelayAdapters {
     const permissionProvider = new InProcessPermissionProvider(
-      sessionId => ctx.sessions.get(SessionId(sessionId)),
-      session => session.events,
+      async (sessionId) => {
+        const live = ctx.sessions.get(sessionId)
+        if (live !== undefined) return live
+        const resolved = await ctx.sessionController.resolveAgent(sessionId)
+        if ('error' in resolved) return undefined
+        return resolved.agent.session
+      },
       ctx.permissionPresets,
     )
     const permissions = new PermissionGatewayFacade(permissionProvider)
-    const dispatch = new InProcessDispatchHandler(toFetchHandler(ctx.apiProxy))
-    const client = new InProcessApiClient(dispatch)
-    const gateway = createInProcessHarnessGateway(client as unknown as InProcessApiClientPort, permissions, dispatch)
+    const gateway = createTypertHarnessGateway(ctx.typertGateway, permissions)
     return { gateway, permissions }
   },
   async startAuthority(ctx, config, adapters, options) {
@@ -120,7 +135,7 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
 
       const preflight = preflightHarnessProfile({
         profile,
-        availableServices: ['apiProxy', 'webServer', 'sessions', 'permissionPresets'],
+        availableServices: REQUIRED_HARNESS_SERVICES,
       })
       if (!preflight.ready) throw new RelayStartupError(preflight.code, preflight.message, 'Enable the Harness web profile with the required native services and retry.')
       if (ctx.webServer.host !== '127.0.0.1') {
@@ -158,11 +173,13 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
         permissionGateway: adapters.permissions,
       })
       const monitoring = new MonitoringFacade()
-      let eventMonitoring: EventMonitoringFacade
-      eventMonitoring = new EventMonitoringFacade(adapters.gateway, async notice => {
-        await projectEventNotice(notice, relay, monitoring, eventMonitoring)
-      })
-      eventHandle = eventMonitoring.start()
+      if (adapters.gateway.supportsEventStreams()) {
+        let eventMonitoring: EventMonitoringFacade
+        eventMonitoring = new EventMonitoringFacade(adapters.gateway, async notice => {
+          await projectEventNotice(notice, relay, monitoring, eventMonitoring)
+        })
+        eventHandle = eventMonitoring.start()
+      }
       http = new McpHttpFacade({
         token: loadedToken.token,
         allowedHosts: [`127.0.0.1:${ctx.webServer.port}`, `localhost:${ctx.webServer.port}`],
@@ -250,7 +267,23 @@ function lifecycleStatus(
     hostIdentity,
     profile: paths.profile,
     dshHome: paths.dshHome,
+    launcher: captureHarnessLauncher(paths),
     lastError,
+  }
+}
+
+function captureHarnessLauncher(paths: RelayRuntimePaths): RelayHostLauncher | null {
+  const entry = process.argv[1]
+  if (entry === undefined || !isAbsolute(process.execPath) || !isAbsolute(entry) || !isAbsolute(process.cwd())) return null
+  return {
+    command: process.execPath,
+    args: [entry, '--profile', paths.profile, '--no-open'],
+    cwd: process.cwd(),
+    environment: {
+      DSH_HOME: paths.dshHome,
+      DSH_PROFILE: paths.profile,
+      DSH_RELAY_ENDPOINT_DESCRIPTOR: paths.endpointDescriptorFile,
+    },
   }
 }
 

@@ -6,8 +6,8 @@ import {
 } from './types.js'
 
 /** Structural view of Harness's native PermissionPresetService. */
-export interface InProcessPermissionPresetPort<TSession, TEvent> {
-  current(events: readonly TEvent[]): string
+export interface InProcessPermissionPresetPort<TSession> {
+  current(session: TSession): string
   set(session: TSession, preset: string): void
 }
 
@@ -16,20 +16,19 @@ export interface InProcessPermissionPresetPort<TSession, TEvent> {
  * The provider appends Harness permission events directly and never sends a
  * slash command or another chat message.
  */
-export class InProcessPermissionProvider<TSession, TEvent> implements PermissionProvider {
+export class InProcessPermissionProvider<TSession> implements PermissionProvider {
   constructor(
-    private readonly resolveSession: (sessionId: string) => TSession | undefined,
-    private readonly eventsOf: (session: TSession) => readonly TEvent[],
-    private readonly presets: InProcessPermissionPresetPort<TSession, TEvent>,
+    private readonly resolveSession: (sessionId: string) => TSession | undefined | Promise<TSession | undefined>,
+    private readonly presets: InProcessPermissionPresetPort<TSession>,
   ) {}
 
   async readCurrent(sessionId: string): Promise<unknown> {
-    const session = this.requireSession(sessionId)
-    return this.presets.current(this.eventsOf(session))
+    const session = await this.requireSession(sessionId)
+    return this.presets.current(session)
   }
 
   async select(sessionId: string, preset: PermissionPreset): Promise<PermissionSelectionResult> {
-    const session = this.requireSession(sessionId)
+    const session = await this.requireSession(sessionId)
     try {
       this.presets.set(session, preset)
     } catch (error: unknown) {
@@ -42,8 +41,8 @@ export class InProcessPermissionProvider<TSession, TEvent> implements Permission
     return { accepted: true }
   }
 
-  private requireSession(sessionId: string): TSession {
-    const session = this.resolveSession(sessionId)
+  private async requireSession(sessionId: string): Promise<TSession> {
+    const session = await this.resolveSession(sessionId)
     if (session === undefined) {
       throw new PermissionGatewayError(
         'PERMISSION_UNAVAILABLE',

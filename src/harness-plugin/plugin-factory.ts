@@ -9,12 +9,25 @@ import {
 } from './config.js'
 
 export const name = HARNESS_PLUGIN_NAME
-export const inject = ['apiProxy', 'webServer', 'sessions', 'permissionPresets'] as const
+export const inject = [
+  'typertGateway',
+  'webServer',
+  'sessions',
+  'sessionController',
+  'workspaceController',
+  'settingsController',
+  'agentPresets',
+  'permissionPresets',
+] as const
 
 export interface HarnessPluginContext {
-  apiProxy: unknown
+  typertGateway: unknown
   webServer: unknown
   sessions: unknown
+  sessionController: unknown
+  workspaceController: unknown
+  settingsController: unknown
+  agentPresets: unknown
   permissionPresets: unknown
   effect(
     install: () => Promise<() => Promise<void>> | AsyncIterable<() => void | Promise<void>, void, void>,
@@ -52,7 +65,7 @@ export interface HarnessPluginDefinition<TContext extends HarnessPluginContext> 
 
 /**
  * Assemble the tree-external Cordis plugin around peer-backed Harness adapters.
- * @param runtime - Thin entry bindings for Schemastery, ApiProxy and MCP routing.
+ * @param runtime - Thin entry bindings for Schemastery, the Typert Gateway and MCP routing.
  * @returns Conventional Cordis name/inject/Config/apply exports.
  */
 export function createHarnessPlugin<TContext extends HarnessPluginContext>(

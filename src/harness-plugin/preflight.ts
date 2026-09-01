@@ -1,7 +1,11 @@
 export const REQUIRED_HARNESS_SERVICES = [
-  'apiProxy',
+  'typertGateway',
   'webServer',
   'sessions',
+  'sessionController',
+  'workspaceController',
+  'settingsController',
+  'agentPresets',
   'permissionPresets',
 ] as const
 

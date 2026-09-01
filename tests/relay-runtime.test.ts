@@ -115,9 +115,10 @@ test('relay status v1 is atomic UTF-8, strict, lifecycle-ready, and credential-s
   assert.equal(text.charCodeAt(0), '{'.charCodeAt(0))
   assert.equal(text.includes('super-secret-token'), false)
   assert.deepEqual(Object.keys(JSON.parse(text) as object).sort(), [
-    'authorityId', 'dshHome', 'hostIdentity', 'instanceId', 'lastError', 'mode', 'ownerEpoch',
+    'authorityId', 'dshHome', 'hostIdentity', 'instanceId', 'lastError', 'launcher', 'mode', 'ownerEpoch',
     'ownerPid', 'processStartedAt', 'profile', 'schemaVersion', 'state', 'updatedAt',
   ])
+  assert.equal((await status.read())?.launcher, null)
   assert.equal((await status.read())?.lastError?.message, 'Bearer [redacted]')
   await status.write({ ...base, state: 'ready', lastError: null })
   await status.write({ ...base, state: 'stopped', lastError: null })

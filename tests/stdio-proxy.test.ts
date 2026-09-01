@@ -230,7 +230,7 @@ test('proxy doctor reports a provably dead ready owner before reading stale endp
 
   assert.equal(report.errorCode, 'OWNER_DEAD')
   assert.deepEqual(report.ownerProbe, { processId: 2_147_483_647, state: 'dead' })
-  assert.match(report.remediation ?? '', /will not restart or stop/iu)
+  assert.match(report.remediation ?? '', /may restart.*only when.*port is free/iu)
   assert.doesNotMatch(JSON.stringify(report), /authorization|ownerToken|Bearer/iu)
 })
 

@@ -9,10 +9,18 @@ export interface StdioProxyConfig {
   statusFile?: string
   clientPrincipalId: string
   requestTimeoutMs: number
+  autoStart?: boolean
+  autoStartTimeoutMs?: number
 }
 
 export interface StdioProxyDependencies {
   processProbe?: ProcessProbe
+  hostAutostart?: {
+    recover(
+      inspection: import('./proxy-diagnostics-facade.js').ProxyInspection,
+      inspect: () => Promise<import('./proxy-diagnostics-facade.js').ProxyInspection>,
+    ): Promise<import('./proxy-diagnostics-facade.js').ProxyInspection>
+  }
 }
 
 export type ProxyRouteReasonCode =
@@ -24,6 +32,10 @@ export type ProxyRouteReasonCode =
   | 'STATUS_NOT_READY'
   | 'OWNER_DEAD'
   | 'OWNER_UNPROBEABLE'
+  | 'HOST_AUTO_START_UNAVAILABLE'
+  | 'HOST_AUTO_START_BLOCKED'
+  | 'HOST_AUTO_START_FAILED'
+  | 'HOST_AUTO_START_TIMEOUT'
   | 'STALE_ENDPOINT_DESCRIPTOR'
   | 'TOKEN_UNREADABLE'
   | 'TOKEN_INVALID'

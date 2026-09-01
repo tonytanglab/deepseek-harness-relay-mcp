@@ -100,13 +100,12 @@ test('in-process provider uses native sessions and permission presets without ch
   interface Session { events: Event[] }
   const session: Session = { events: [{ preset: 'read-only' }] }
   const calls: string[] = []
-  const provider = new InProcessPermissionProvider<Session, Event>(
-    sessionId => sessionId === 'session-native' ? session : undefined,
-    value => value.events,
+  const provider = new InProcessPermissionProvider<Session>(
+    async sessionId => sessionId === 'session-native' ? session : undefined,
     {
-      current(events) {
+      current(value) {
         calls.push('current')
-        return events.at(-1)?.preset ?? 'read-only'
+        return value.events.at(-1)?.preset ?? 'read-only'
       },
       set(value, preset) {
         calls.push(`set:${preset}`)
@@ -122,9 +121,8 @@ test('in-process provider uses native sessions and permission presets without ch
 })
 
 test('in-process provider fails closed when the native session is unavailable', async () => {
-  const provider = new InProcessPermissionProvider<object, never>(
+  const provider = new InProcessPermissionProvider<object>(
     () => undefined,
-    () => [],
     { current: () => 'read-only', set: () => {} },
   )
 

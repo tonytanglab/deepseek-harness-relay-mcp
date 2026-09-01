@@ -103,10 +103,14 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
     assert.equal(dispatched[0]?.permissionPreset, 'read-only')
 
     const waitRun = tools.tools.find(item => item.name === 'wait_run')
+    const startRun = tools.tools.find(item => item.name === 'start_run')
     const startReview = tools.tools.find(item => item.name === 'start_review')
     assert.match(waitRun?.description ?? '', /A timeout is a slice, not completion/)
     assert.match(waitRun?.description ?? '', /MUST call wait_run again immediately/)
     assert.match(startReview?.description ?? '', /MUST read assistantText/)
+    assert.match(startRun?.description ?? '', /path-reference-only/)
+    assert.match(startReview?.description ?? '', /Never embed source text/)
+    assert.match(startReview?.description ?? '', /identical for read-only and write-capable permissions/)
     const waited = await client.callTool({
       name: 'wait_run',
       arguments: { runId: '5f502f03-3a5e-4e3d-9b18-373306961a79', timeoutMs: 0 },

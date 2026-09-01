@@ -1,4 +1,10 @@
 export { readEndpointDescriptor } from './descriptor-reader.js'
+export {
+  HarnessHostAutostartFacade,
+  type HarnessHostAutostartDependencies,
+  type HarnessHostAutostartLock,
+  type LoopbackPortState,
+} from './host-autostart-facade.js'
 export { ProxyDiagnosticsFacade, type ProxyDiagnosticsDependencies, type ProxyInspection } from './proxy-diagnostics-facade.js'
 export { StdioProxyFacade } from './stdio-proxy-facade.js'
 export type {

@@ -9,7 +9,7 @@
       "source": {
         "source": "npm",
         "package": "harness-relay-mcp",
-        "version": "0.2.6",
+        "version": "0.2.9",
         "registry": "https://registry.npmjs.org"
       },
       "policy": {

@@ -1,4 +1,4 @@
 interface:
   display_name: "Delegate to DeepSeek Harness"
   short_description: "Dispatch bounded Harness reviews and workspace edits"
-  default_prompt: "Use $delegate-to-deepseek-harness to dispatch and monitor this bounded review or workspace implementation task."
+  default_prompt: "Use $delegate-to-deepseek-harness to pass only the authorized workspace, file locations, and scope, then let Harness read and work in that workspace without embedding source in task parameters."

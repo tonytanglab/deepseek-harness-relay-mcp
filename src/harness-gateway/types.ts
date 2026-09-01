@@ -56,6 +56,10 @@ export interface HistoryPage {
         maxImages?: number
         maxMessageBytes?: number
         mediaTypes?: string[]
+        maxImageBytes?: number
+        maxImagesPerMessage?: number
+        maxMessageImageBytes?: number
+        maxImagePixels?: number
       }
     }
   }

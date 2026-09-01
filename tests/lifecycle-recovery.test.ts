@@ -152,7 +152,7 @@ test('restores a fresh session after a temporary elevated permission', async () 
 
 test('marks a silent running session for attention and resumes after durable progress', async () => {
   let sequence = 2
-  const relay = new RelayFacade(config(), async (_input, init) => {
+  const relay = new RelayFacade(config(undefined, '1000'), async (_input, init) => {
     const request = requestOf(init)
     let value: unknown
     switch (request.method) {
@@ -288,14 +288,14 @@ test('resumes a prepared persisted run with the original prompt rpcId', async ()
   assert.equal(resumed.promptMessageId, 'replayed-message')
 })
 
-function config(stateFile = join(tmpdir(), `dsh-relay-${randomUUID()}.json`)) {
+function config(stateFile = join(tmpdir(), `dsh-relay-${randomUUID()}.json`), runStallMs = '60000') {
   return resolveConfig({
     DSH_RELAY_HOST_URL: 'http://127.0.0.1:3080/',
     DSH_RELAY_ALLOWED_WORKSPACE_ROOTS: workspace,
     DSH_RELAY_STATE_FILE: stateFile,
     DSH_RELAY_RPC_TIMEOUT_MS: '1000',
     DSH_RELAY_POLL_INTERVAL_MS: '100',
-    DSH_RELAY_RUN_STALL_MS: '1000',
+    DSH_RELAY_RUN_STALL_MS: runStallMs,
   })
 }
 

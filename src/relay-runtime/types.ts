@@ -34,6 +34,17 @@ export interface RelayStatusError {
   remediation: string
 }
 
+export interface RelayHostLauncher {
+  command: string
+  args: string[]
+  cwd: string
+  environment: {
+    DSH_HOME: string
+    DSH_PROFILE: string
+    DSH_RELAY_ENDPOINT_DESCRIPTOR: string
+  }
+}
+
 export interface RelayStatusDocument {
   schemaVersion: 1
   state: RelayStatusState
@@ -46,10 +57,12 @@ export interface RelayStatusDocument {
   hostIdentity: string
   profile: string
   dshHome: string
+  launcher: RelayHostLauncher | null
   updatedAt: string
   lastError: RelayStatusError | null
 }
 
-export interface RelayStatusWriteInput extends Omit<RelayStatusDocument, 'schemaVersion' | 'updatedAt'> {
+export interface RelayStatusWriteInput extends Omit<RelayStatusDocument, 'schemaVersion' | 'updatedAt' | 'launcher'> {
+  launcher?: RelayHostLauncher | null
   updatedAt?: string
 }

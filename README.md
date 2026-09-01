@@ -62,13 +62,13 @@ As of 2026-08-20, the official [`dsh` launcher source](https://github.com/deepse
 - Persistent run identities and recovery after the MCP server restarts.
 - Stable Harness Web session links, with explicit visible-page verification in the bundled Skill.
 - Compatible with Codex, Claude Code, OpenCode, Cursor, and other standards-compliant MCP clients.
-- The internal bundle uses the official InProcess ApiProxy and native permission service; external agents connect through authenticated HTTP or the stateless stdio proxy.
+- The internal bundle uses Harness 0.1.2's direct Typert Gateway and native permission service; external agents connect through authenticated HTTP or the stateless stdio proxy.
 - The standalone `dsh-relay` mode remains available for older Harness versions and explicit rollback.
 
 ## Requirements
 
 - Node.js `^22.19` or `>=24`.
-- Internal mode requires the DeepSeek Harness `0.1.0-rc.7` compatible line, the `web` profile, and a `127.0.0.1` bind.
+- Internal mode requires DeepSeek Harness `>=0.1.2-alpha.2 <0.2.0`, the `web` profile, and a `127.0.0.1` bind. Relay 0.2.6 and earlier target the removed rc.7 ApiProxy surface and do not load in this Harness line.
 - Standalone compatibility mode requires a running DeepSeek Harness Web Host on loopback HTTP.
 - The target workspace must already be registered by Harness or be inside an explicitly configured allowed root.
 
@@ -139,9 +139,9 @@ The packaged `.mcp.json` must use the plugin-relative proxy entrypoint:
 }
 ```
 
-Codex resolves `cwd: "."` against the installed plugin version root. Do not hard-code a development checkout or a versioned `%USERPROFILE%\.codex\plugins\cache\...` path, and do not register a duplicate server in user `config.toml`. Codex must start only `dsh-relay-proxy.mjs`: never point it at `dsh-relay-harness.mjs` (the internal Harness bundle), `dsh-relay.mjs` (a separate standalone control plane), or start a second Harness Web. The proxy discovers the already-running authority through `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json`; client configuration never stores the bearer token.
+Codex resolves `cwd: "."` against the installed plugin version root. Do not hard-code a development checkout or a versioned `%USERPROFILE%\.codex\plugins\cache\...` path, and do not register a duplicate server in user `config.toml`. Codex must start only `dsh-relay-proxy.mjs`: never point it at `dsh-relay-harness.mjs` (the internal Harness bundle), `dsh-relay.mjs` (a separate standalone control plane), or manually start another Harness Web. The proxy discovers the authority through `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json`. When the recorded owner is provably dead and the loopback port is confirmed free, Relay 0.2.8+ can safely restart the exact launcher contract published by the previous embedded Host; an occupied or unprobeable port still fails closed. Client configuration never stores the bearer token.
 
-In a new Codex task, use `doctor → list_workspaces → list_capabilities`, then `start_review` for analysis or `start_run` with `workspace-write` when the user explicitly delegates implementation. Keep calling `wait_run` to a terminal state, consume `assistantText`, and verify the result. When a user explicitly selects Harness or a Harness model to review the current or named registered workspace, Harness is authorized to read that in-scope workspace itself. Codex sends only the workspace path, task, model, permission, and idempotency data; it should not paste source contents into MCP arguments or describe the flow as Codex uploading the repository. This does not authorize credentials, secrets, unrelated paths, or edits.
+In a new Codex task, use `doctor → list_workspaces → list_capabilities`, then `start_review` for analysis or `start_run` with `workspace-write` when the user explicitly delegates implementation. Keep calling `wait_run` to a terminal state, consume `assistantText`, and verify the result. When a user explicitly selects Harness or a Harness model to review or modify the current or named registered workspace, Harness is authorized to read that in-scope workspace itself. The calling task sends only the workspace, file/directory locations, review or implementation scope, acceptance criteria, and routing/permission metadata. Harness reads the named files from the authorized workspace. Both `read-only` and `workspace-write` forbid embedding source bodies, diffs, file dumps, encoded source, or repository archives in `task`, text `content`, `steer_run`, or `reply_run` arguments. Write permission changes what Harness may do, not how source is transferred. This does not authorize credentials, secrets, or unrelated paths.
 
 Restart Codex after installation and start a new Codex task so the new task loads the MCP server and Skill. In that task, ask:
 
@@ -168,8 +168,8 @@ First inspect the operating system, Node.js version, dsh, Codex CLI, Harness web
 Report the checks, missing dependencies, exact commands, and impact. Wait for my confirmation before making changes.
 On the Harness side, install the internal bundle only with dsh plugin --profile web add harness-relay-mcp. Do not modify DeepSeek Harness source and do not add Relay as a Harness MCP client.
 On the Codex side, add the tonytanglab/deepseek-harness-relay-mcp repository marketplace and install deepseek-harness-relay@harness-relay.
-The Codex manifest must reference the packaged .mcp.json, which must run node ./dist/dsh-relay-proxy.mjs with cwd ".". Do not point it at dsh-relay-harness.mjs or dsh-relay.mjs, duplicate it in user config.toml, or start a second Harness Web.
-When I explicitly select Harness or a Harness model to review the current or named registered workspace, treat that as authorization for Harness to read within that scope itself; send workspace/task/model/permission/idempotency metadata, not source contents. Use start_run + workspace-write only when I explicitly ask Harness to modify code; use start_review for ordinary review.
+The Codex manifest must reference the packaged .mcp.json, which must run node ./dist/dsh-relay-proxy.mjs with cwd ".". Do not point it at dsh-relay-harness.mjs or dsh-relay.mjs, duplicate it in user config.toml, or manually start a second Harness Web. Let the proxy perform its guarded single-instance recovery when the recorded owner is dead.
+When I explicitly select Harness or a Harness model to review or modify the current or named registered workspace, let Harness read within that scope itself. Send only the workspace, file/directory locations, review or implementation scope, acceptance criteria, model, permission, and idempotency metadata. For both read-only and workspace-write, never place source bodies, diffs, file dumps, encoded source, or repository archives in task/content/steer_run/reply_run arguments. Use start_run + workspace-write only when I explicitly ask Harness to modify code; use start_review for ordinary review.
 After installation, verify dsh --profile web --dump-config and codex plugin list, then remind me to restart Codex, create a new task, and run doctor and list_workspaces.
 If any command fails, stop and report the original error. Do not broaden permissions or delete existing configuration.
 ```
@@ -228,7 +228,7 @@ Then dispatch a read-only Kimi K3/MAX review:
   "tool": "start_review",
   "arguments": {
     "workspace": "D:/work/project",
-    "task": "Review this workspace and return reproducible findings only.",
+    "task": "Read README.md, skills/delegate-to-deepseek-harness, and src/mcp-server; review the task contract and permission boundary and return reproducible findings only.",
     "provider": "kimi-coding",
     "model": "k3",
     "reasoningEffort": "max",
@@ -284,8 +284,8 @@ running ── status/wait/steer/cancel ──> succeeded | incomplete | failed 
 | Parameter | Required | Description |
 | --- | --- | --- |
 | `workspace` | Yes | Absolute workspace path allowed by Relay policy. |
-| `task` | One prompt form | Plain-text task. Mutually exclusive with `content`. |
-| `content` | One prompt form | Ordered text/image blocks. Mutually exclusive with `task`. |
+| `task` | One prompt form | Plain text containing only file/directory locations, review or implementation scope, and acceptance criteria. Source bodies, diffs, file dumps, encoded source, and repository archives are forbidden. Mutually exclusive with `content`. |
+| `content` | One prompt form | Ordered text/image blocks under the same path-and-scope-only contract. Images are for task-required non-workspace evidence, not a substitute for Harness reading workspace source. Mutually exclusive with `task`. |
 | `sessionId` | No | Reuse an idle session in the selected workspace. |
 | `sessionMode` | No | `fresh` or `latest-idle`; defaults to `fresh` and cannot be combined with `sessionId`. |
 | `provider` | With `model` | Exact provider ID returned by `list_capabilities`. |
@@ -322,11 +322,11 @@ Supported media types are PNG, JPEG, WebP, and GIF. Image bytes are forwarded to
 
 | Preset | Intended use |
 | --- | --- |
-| `read-only` | Review, diagnosis, research, comparison, and planning. |
-| `workspace-write` | Implementation restricted to the authorized workspace. |
+| `read-only` | Review, diagnosis, research, comparison, and planning; task arguments contain only locations and scope. |
+| `workspace-write` | Implementation restricted to authorized workspace write paths; task arguments still contain only locations and scope, never source bodies. |
 | `danger-full-access` | Full Harness access; use only when the caller intentionally authorizes it. |
 
-DSH Relay invokes the native Harness `/permission` command through `commands/execute` and verifies the resulting session projection before submitting the first task prompt. A textual instruction is never treated as a permission boundary.
+In embedded mode, DSH Relay activates the addressed Session when necessary, calls the native permission service directly, and confirms the resulting preset before submitting the first task prompt. A textual instruction is never treated as a permission boundary, and a permission preset never relaxes the path-reference-only task-transfer contract.
 
 ## MCP tools
 
@@ -335,7 +335,7 @@ DSH Relay invokes the native Harness `/permission` command through `commands/exe
 | `doctor` | Check the Relay package, Host connection, workspace policy, and persistent state. |
 | `setup_plan` | Generate a validated, no-write client configuration patch. |
 | `setup_doctor` | Evaluate a setup plan and caller-supplied probes as a machine-readable report. |
-| `start_service` | Attach an authorized workspace to the existing Harness Host. |
+| `start_service` | Attach an authorized workspace to Harness; the proxy first performs guarded Host recovery when needed. |
 | `open_service` | Open the Host root URL. |
 | `list_services` | List restored workspace attachments. |
 | `list_workspaces` | List the native Harness workspace registry used for routing. |
@@ -376,6 +376,8 @@ The default state file is:
 
 State is schema-validated, locked across processes with owner-verified leases, and written through atomic replacement with restrictive file permissions where supported. Stale writers cannot regress stopped services, terminal runs, attention states, operations, or permission leases. Invalid files are quarantined rather than overwritten. By default, prompt text and image bytes are not persisted. After a Relay restart, run and operation identities are restored and reconciled with native Harness history. Assistant text from the reconciled turn is retained in event order instead of returning only the final assistant message. A run that produces no durable progress for the configured interval enters `needs_attention` with `attentionReason: run_stalled`; later progress automatically returns it to `running`.
 
+The embedded Host also publishes a credential-free launcher contract containing only the absolute Node/dsh entry, profile, working directory, and Relay runtime paths. On `OWNER_DEAD` or a cleanly stopped Host, the stdio proxy takes a cross-process start lock, rechecks status, confirms the recorded loopback port is free, validates the launcher shape and files, and starts Harness hidden with `--no-open`. Concurrent clients converge on one launch. Missing or invalid launchers, unknown owner state, occupied ports, and startup failures remain explicit fail-closed diagnostics.
+
 Multiple local MCP server processes may share one state file; writes are serialized and merged by stable identifiers. An abandoned lock fails closed instead of being deleted by age. Use separate `DSH_RELAY_STATE_FILE` paths when clients require operational isolation.
 
 ## Session links
@@ -393,6 +395,8 @@ An HTTP 200 response proves only that the Host answered; it does not prove that 
 | Environment variable | Default | Purpose |
 | --- | --- | --- |
 | `DSH_RELAY_HOST_URL` | `http://127.0.0.1:3080/` | Loopback Harness Host URL. |
+| `DSH_RELAY_AUTO_START` | `true` | Allow the stdio proxy to restart the previously recorded Harness Web launcher after safe owner and port checks. |
+| `DSH_RELAY_AUTO_START_TIMEOUT_MS` | `120000` | Maximum time to wait for guarded Host recovery to publish a ready Relay endpoint. |
 | `DSH_RELAY_ALLOWED_WORKSPACE_ROOTS` | Harness workspace registry | OS-delimited list of additional authorized absolute roots. Without it, Relay accepts only workspaces already registered by Harness. |
 | `DSH_RELAY_STATE_FILE` | `%LOCALAPPDATA%/dsh-relay/state.json` | Persistent Relay state location. |
 | `DSH_RELAY_PERSIST_PROMPT_TEXT` | `false` | Persist prompt summaries when explicitly acceptable. |
@@ -422,7 +426,7 @@ Only loopback HTTP Hosts are accepted. Workspace paths are resolved through the 
 
 ## Standards boundary
 
-Harness Relay MCP uses a dual-layer compatibility design. The `harness-relay-mcp` package root is an out-of-tree, in-process bundle that follows the Harness/Cordis contract, exports `Config/apply(ctx)`, and installs through `dsh.bundle` plus `cordis.patch.yml`. External agents use the same internal authority through authenticated HTTP or the stateless proxy; the standalone entry remains a compatibility and rollback path. No Harness product source is copied or modified.
+Harness Relay MCP uses a dual-layer compatibility design. The `harness-relay-mcp` package root is an out-of-tree, in-process bundle that follows the Harness/Cordis contract, exports `Config/apply(ctx)`, and installs through `dsh.bundle` plus `cordis.patch.yml`. Version 0.2.9 binds to the 0.1.2 Host services (`typertGateway`, Session/Workspace/Settings controllers, Agent Presets, WebServer, and Permission Presets), translates `session.follow/page` and `workspace.follow` into Relay's semantic gateway, and keeps durable polling authoritative when the removed rc.8 mux streams are unavailable. External agents use the same internal authority through authenticated HTTP or the stateless proxy; the standalone entry remains a compatibility and rollback path. No Harness product source is copied or modified.
 
 See the official DeepSeek Harness documentation for [creating a Harness plugin](https://deepseek-harness.github.io/deepseek-harness/develop/basic/) and [publishing bundles](https://deepseek-harness.github.io/deepseek-harness/develop/basic/publish).
 

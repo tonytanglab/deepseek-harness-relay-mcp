@@ -2,6 +2,17 @@ import { z } from 'zod'
 import { atomicWriteJson, readUtf8File } from '../state-repository/index.js'
 import type { RelayStatusDocument, RelayStatusWriteInput } from './types.js'
 
+const launcherSchema = z.object({
+  command: z.string().min(1),
+  args: z.array(z.string()).min(1).max(8),
+  cwd: z.string().min(1),
+  environment: z.object({
+    DSH_HOME: z.string().min(1),
+    DSH_PROFILE: z.string().min(1),
+    DSH_RELAY_ENDPOINT_DESCRIPTOR: z.string().min(1),
+  }).strict(),
+}).strict()
+
 const statusSchema = z.object({
   schemaVersion: z.literal(1),
   state: z.enum(['starting', 'ready', 'failed', 'stopped']),
@@ -14,6 +25,7 @@ const statusSchema = z.object({
   hostIdentity: z.string().min(1),
   profile: z.string().min(1),
   dshHome: z.string().min(1),
+  launcher: launcherSchema.nullable().default(null),
   updatedAt: z.string().datetime(),
   lastError: z.object({
     code: z.string().min(1),

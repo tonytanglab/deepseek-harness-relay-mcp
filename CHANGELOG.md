@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## 0.2.9
+
+### 2026-09-01 09:33
+
+- 将 Harness Relay 委派契约收紧为 `path-reference-only`：主任务只传已授权工作区、文件/目录位置、审查或实施范围、验收条件与路由/权限元数据，由 Harness 在工作区内自行读取；`task`、文本 `content`、`steer_run` 与 `reply_run` 均禁止嵌入源码正文、diff、文件转储、源码编码或仓库归档。
+- 统一只读与读写授权边界：`workspace-write` 只改变 Harness 可执行的写操作，不放宽源码传递规则；任务清单生成器不再递归读取、枚举、哈希或摘要源码，改为校验路径包含关系，并要求写模式显式声明允许的写路径。
+- 更新 Skill、MCP Server 指令与工具参数说明、中英文文档及 Codex 默认提示；新增路径清单不泄露源码、读写模式同契约、显式写路径、单行范围与越界拒绝回归测试。
+
+## 0.2.8
+
+### 2026-09-01 08:09
+
+- 修复 stdio proxy 在 `OWNER_DEAD` 且 3080 无 Harness Web 实例时只返回诊断、不会恢复宿主的问题：embedded Host 现在发布不含凭据的受限启动契约，proxy 默认执行跨进程锁、owner 复核、回环端口探测、启动器严格校验，并以隐藏窗口和 `--no-open` 拉起唯一 Harness Web。
+- 保留单实例安全边界：owner 无法确认、端口已占用或不可探测、启动器缺失/失效及启动超时均安全失败，不会启动第二个 Harness；新增关闭开关与恢复超时配置，并覆盖自动拉起、端口占用拒绝及并发防重复启动回归。
+- 严格 TypeScript、构建、发布文件门禁及全量 206 项测试通过；真实停止旧 Host 后仅启动 stdio proxy，成功自动拉起新 Harness PID、推进 owner epoch，并恢复 `doctor.ok=true` 与完整 MCP 工具目录。Harness profile 和 Codex personal 插件均回装最终 0.2.8 字节。
+
+## 0.2.7
+
+### 2026-08-31 09:40
+
+- 适配 DeepSeek Harness `0.1.2-alpha.2`：移除已下线的 `dsh-host-apiproxy` 依赖，改用 Host 直连 Typert Gateway，并更新 Cordis 注入服务、工作区与会话流式基线、历史分页、模型目录、权限预设及客户端生成 `requestId` 的调用映射。
+- 新版 Harness 不再提供旧 mux/host 事件流时，Relay 自动使用 durable history 轮询；保留 prompt 关联 ID 在派发前落盘、权限租约恢复及错误确定性分类语义，并明确 `0.2.6` 及更早版本与新版 Harness 不兼容。
+- 发布版本同步至 `0.2.7`，更新可选 Harness peer dependencies、安装说明和接口边界；新增 Typert 适配回归并稳定慢速 Windows 生命周期测试。严格 TypeScript、构建、MCP smoke、发布文件门禁及全量 203 项测试通过。
+
 ## 0.2.6
 
 ### 2026-08-28 13:38

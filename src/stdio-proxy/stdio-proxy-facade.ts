@@ -3,6 +3,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
+import { HarnessHostAutostartFacade } from './host-autostart-facade.js'
 import { ProxyDiagnosticsFacade, type ProxyInspection } from './proxy-diagnostics-facade.js'
 import type { ProxyDoctorReport, ProxyRouteFailure, StdioProxyConfig, StdioProxyDependencies } from './types.js'
 
@@ -33,6 +34,7 @@ export class StdioProxyFacade {
     },
   )
   private readonly diagnostics: ProxyDiagnosticsFacade
+  private readonly hostAutostart: NonNullable<StdioProxyDependencies['hostAutostart']> | null
   private remote: Client | null = null
   private remoteAuthorityKey: string | null = null
   private lastError: ProxyRouteFailure | null = null
@@ -42,6 +44,14 @@ export class StdioProxyFacade {
   constructor(private readonly config: StdioProxyConfig, dependencies: StdioProxyDependencies = {}) {
     if (!principalPattern.test(config.clientPrincipalId)) throw new Error('invalid DSH Relay client principal')
     this.diagnostics = new ProxyDiagnosticsFacade(config.descriptorFile, config.statusFile, dependencies)
+    this.hostAutostart = dependencies.hostAutostart
+      ?? (config.autoStart === true
+        ? new HarnessHostAutostartFacade(
+          config.descriptorFile,
+          this.diagnostics.statusFile,
+          config.autoStartTimeoutMs ?? 120_000,
+        )
+        : null)
     this.local.setRequestHandler(ListToolsRequestSchema, request => this.listTools(request.params?.cursor))
     this.local.setRequestHandler(CallToolRequestSchema, request => this.callTool(request.params.name, request.params.arguments))
   }
@@ -111,7 +121,10 @@ export class StdioProxyFacade {
   }
 
   private async refreshRemote(): Promise<boolean> {
-    const inspected = await this.diagnostics.inspect()
+    let inspected = await this.diagnostics.inspect()
+    if (inspected.failure !== null && this.hostAutostart !== null) {
+      inspected = await this.hostAutostart.recover(inspected, () => this.diagnostics.inspect())
+    }
     if (inspected.failure !== null) {
       if (this.remote === null) this.lastError = inspected.failure
       else await this.invalidateRemote(inspected.failure)

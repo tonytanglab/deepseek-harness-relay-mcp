@@ -1,6 +1,11 @@
 # CHANGELOG
 
-## 0.2.9
+## 0.2.10
+
+### 2026-09-02 07:24
+
+- 发布 `0.2.10`：合并 Harness Web 源码启动恢复与 Codex 无感后台调用修复，正式包、Codex 插件清单和仓库 Marketplace 版本保持一致。
+- 发布门禁覆盖严格 UTF-8、Skill/插件结构、TypeScript、构建、MCP smoke、发布文件预算、全量 214 项测试与 tarball 内容校验；GitHub Release 附带可直接安装的 npm tarball 及 SHA-256。
 
 ### 2026-09-01 22:35
 
@@ -13,6 +18,8 @@
 - 修复 embedded Harness 从源码启动时的自动恢复契约：发布启动器时保留官方 `node --import tsx/esm` 执行参数，避免 stdio proxy 重启为不带 loader 的 raw Node 并触发 Cordis `FiberState` 运行时导出错误。
 - 将启动向量捕获与严格校验收口到共享 Facade；构建后 `lib/bin.js` 启动保持不变，源码入口只接受明确的 tsx ESM loader，缺失 loader 或附带其它 Node 参数继续安全拒绝，不放宽自动启动边界。
 - 新增源码启动向量记录、状态持久化、带 loader 重启与 raw Node 拒绝回归，并同步更新中英文运行说明；聚焦 11 项测试、严格 TypeScript、构建与发布文件检查通过。全量 212 项测试中 209 项通过，另 3 项因本机 Windows Store `python.exe` launcher 返回 9009 而失败，与本次启动契约改动无关。
+
+## 0.2.9
 
 ### 2026-09-01 09:33
 

@@ -68,7 +68,7 @@ As of 2026-08-20, the official [`dsh` launcher source](https://github.com/deepse
 ## Requirements
 
 - Node.js `^22.19` or `>=24`.
-- Internal mode requires DeepSeek Harness `>=0.1.2-alpha.2 <0.2.0`, the `web` profile, and a `127.0.0.1` bind. Relay 0.2.6 and earlier target the removed rc.7 ApiProxy surface and do not load in this Harness line.
+- Internal mode requires DeepSeek Harness `>=0.1.3-alpha.2 <0.2.0`, the `web` profile, and a `127.0.0.1` bind. This floor includes the upstream Windows background-child fix, so model-driven `rg` and other ordinary CLI calls do not open transient console windows. Relay 0.2.6 and earlier target the removed rc.7 ApiProxy surface and do not load in this Harness line.
 - Standalone compatibility mode requires a running DeepSeek Harness Web Host on loopback HTTP.
 - The target workspace must already be registered by Harness or be inside an explicitly configured allowed root.
 

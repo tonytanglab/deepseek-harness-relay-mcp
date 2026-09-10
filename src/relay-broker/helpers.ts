@@ -2,7 +2,20 @@ import { createHash } from 'node:crypto'
 import type { RunSnapshot } from '../types.js'
 
 export function cloneRun(run: RunSnapshot): RunSnapshot {
-  return { ...run, modelSelection: run.modelSelection === null ? null : { ...run.modelSelection }, warnings: [...run.warnings] }
+  return {
+    ...run,
+    modelSelection: run.modelSelection === null ? null : { ...run.modelSelection },
+    warnings: [...run.warnings],
+    ...(run.taskScope === undefined ? {} : {
+      taskScope: {
+        ...run.taskScope,
+        reviewTargets: [...run.taskScope.reviewTargets],
+        contextReadScope: [...run.taskScope.contextReadScope],
+        excludedPaths: [...run.taskScope.excludedPaths],
+        writeScope: [...run.taskScope.writeScope],
+      },
+    }),
+  }
 }
 
 export function persistedSnapshot(run: RunSnapshot, persistPromptText: boolean): RunSnapshot {

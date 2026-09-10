@@ -330,6 +330,10 @@ Supported media types are PNG, JPEG, WebP, and GIF. Image bytes are forwarded to
 
 In embedded mode, DSH Relay activates the addressed Session when necessary, calls the native permission service directly, and confirms the resulting preset before submitting the first task prompt. A textual instruction is never treated as a permission boundary, and a permission preset never relaxes the path-reference-only task-transfer contract.
 
+`start_review`, `start_run`, and `reply_run` accept a structured scope declaration: `reviewTargets` identifies the subjects, `contextReadScope` identifies supporting locations Harness may search and read, `excludedPaths` identifies exclusions, and `writeScope` identifies writable locations. When reviewing a plan, the target file is not a read whitelist; include the authorized repository or relevant subtrees in `contextReadScope` unless the user explicitly requests a target-only review. Relay adds these fields to the Harness prompt and preserves them across `reply_run`, but they are not per-path filesystem enforcement. Native Harness permissions control the broad read/write mode. The selected model may still process read content through its configured provider; a loopback Relay connection does not mean all model processing is local.
+
+When the current conversation explicitly asks to use Harness, the caller may pass `authorizationBasis: explicit-user-request` to record that existing choice for Codex approval review. The field does not broaden the workspace, context, permission, model provider, or allowed external actions, and it does not guarantee automatic approval. Callers should prefer the exact `provider` and `model` returned by `list_capabilities` so the content-processing destination is identifiable.
+
 ## MCP tools
 
 | Tool | Purpose |
@@ -345,7 +349,7 @@ In embedded mode, DSH Relay activates the addressed Session when necessary, call
 | `stop_service` | Detach Relay state without stopping Harness. |
 | `list_capabilities` | List provider/model/reasoning and agent preset choices plus native permission modes. |
 | `start_run` | Create or reuse a session and submit a tracked task. |
-| `start_review` | Submit a task with the native permission preset fixed to `read-only`. |
+| `start_review` | Submit a native `read-only` task with separate review-target and supporting-read scopes. |
 | `steer_run` | Insert a correction into an active run. |
 | `get_run` | Read and reconcile one run; the preferred run-status entry point. |
 | `get_run_summary` | Project a run into stable status, model, permission, elapsed-time, and next-action fields. |

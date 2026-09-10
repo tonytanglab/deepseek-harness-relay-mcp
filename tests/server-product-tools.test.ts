@@ -97,10 +97,18 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
 
     await client.callTool({
       name: 'start_review',
-      arguments: { workspace: 'D:\\work\\demo', task: 'review', sessionMode: 'latest-idle' },
+      arguments: {
+        workspace: 'D:\\work\\demo', task: 'review', sessionMode: 'latest-idle',
+        reviewTargets: ['docs/plan.md'], contextReadScope: ['.'], excludedPaths: ['secrets'],
+        authorizationBasis: 'explicit-user-request',
+      },
     })
     assert.equal(dispatched[0]?.sessionMode, 'latest-idle')
     assert.equal(dispatched[0]?.permissionPreset, 'read-only')
+    assert.deepEqual(dispatched[0]?.reviewTargets, ['docs/plan.md'])
+    assert.deepEqual(dispatched[0]?.contextReadScope, ['.'])
+    assert.deepEqual(dispatched[0]?.excludedPaths, ['secrets'])
+    assert.equal(dispatched[0]?.authorizationBasis, 'explicit-user-request')
 
     const waitRun = tools.tools.find(item => item.name === 'wait_run')
     const startRun = tools.tools.find(item => item.name === 'start_run')
@@ -112,12 +120,16 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
     assert.match(startReview?.description ?? '', /MUST read assistantText/)
     assert.match(startRun?.description ?? '', /path-reference-only/)
     assert.match(startReview?.description ?? '', /Never embed source text/)
-    assert.match(startReview?.description ?? '', /identical for read-only and write-capable permissions/)
+    assert.match(startReview?.description ?? '', /task instructions, not enforced per-path filesystem isolation/)
+    assert.match(startReview?.description ?? '', /not a read whitelist/)
+    assert.match(startReview?.description ?? '', /configured model provider/)
+    assert.equal(startReview?.annotations?.openWorldHint, true)
     assert.match(openRun?.description ?? '', /only when the user explicitly asks/)
     const startRunProperties = startRun?.inputSchema.properties as Record<string, { description?: string }> | undefined
     const startReviewProperties = startReview?.inputSchema.properties as Record<string, { description?: string }> | undefined
     assert.match(startRunProperties?.openBrowser?.description ?? '', /Keep false unless the user explicitly asks/)
     assert.match(startReviewProperties?.openBrowser?.description ?? '', /Keep false unless the user explicitly asks/)
+    assert.match(startReviewProperties?.authorizationBasis?.description ?? '', /does not expand permissions or guarantee approval/)
     const waited = await client.callTool({
       name: 'wait_run',
       arguments: { runId: '5f502f03-3a5e-4e3d-9b18-373306961a79', timeoutMs: 0 },

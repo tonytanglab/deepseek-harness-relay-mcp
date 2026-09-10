@@ -5,7 +5,7 @@ import { createHttpHarnessGateway, HostRpcError, type HarnessGatewayFacade } fro
 import { ModelSelectionFacade } from '../model-selection.js'
 import { ExternalPermissionProvider, PermissionGatewayFacade } from '../permission-gateway/index.js'
 import { PACKAGE_NAME } from '../product-identity/index.js'
-import { resolvePrompt } from '../prompt.js'
+import { appendTaskScope, resolvePrompt } from '../prompt.js'
 import { mergeEvents, stringAt, userRpcId } from '../run-events.js'
 import { SessionRoutingFacade, type WorkspaceSessionSummary } from '../session-routing/index.js'
 import { RelayStateStore } from '../state-store.js'
@@ -19,7 +19,7 @@ import { PermissionController } from './permission-controller.js'
 import { PromptAdmissionController } from './prompt-admission-controller.js'
 import { RunReconciler } from './run-reconciler.js'
 import type { RelayFacadeOptions } from './relay-facade-options.js'
-import { operationRequest, type StartRunInput, validateStartRunInput } from './run-input.js'
+import { inheritTaskScope, operationRequest, resolveTaskScope, type StartRunInput, validateStartRunInput } from './run-input.js'
 
 interface ServiceRecord extends ServiceSnapshot {}
 
@@ -185,7 +185,8 @@ export class RelayFacade {
   async startRun(input: StartRunInput, clientPrincipalId: string = this.config.clientPrincipalId): Promise<RunSnapshot> {
     await this.ready
     validateStartRunInput(input)
-    const prompt = resolvePrompt(input, this.config)
+    const taskScope = resolveTaskScope(input)
+    const prompt = resolvePrompt(appendTaskScope(input, taskScope, input.authorizationBasis), this.config)
     const prepared = await this.journal.prepare(clientPrincipalId, input.operationKind ?? 'start', randomUUID(), operationRequest(input, prompt.summary, prompt.imageCount), input.idempotencyKey)
     const operation = prepared.record
     if (prepared.replayed) {
@@ -292,6 +293,7 @@ export class RelayFacade {
         task: prompt.summary,
         taskPersisted: true,
         taskImageCount: prompt.imageCount,
+        ...(taskScope === undefined ? {} : { taskScope }),
         cancelRequested: false,
         startedAt: new Date().toISOString(),
         lastProgressAt: new Date().toISOString(),
@@ -343,14 +345,14 @@ export class RelayFacade {
     const parent = this.requireRun(runId)
     await this.reconciler.refresh(parent)
     if (parent.snapshot.status === 'running') throw new Error(`run is still active: ${runId}`)
-    return this.startRun({
+    return this.startRun(inheritTaskScope({
       ...input,
       workspace: parent.snapshot.workspace,
       sessionId: parent.snapshot.sessionId,
       permissionPreset: input.permissionPreset ?? parent.snapshot.permissionPreset,
       parentRunId: runId,
       operationKind: 'reply',
-    }, clientPrincipalId)
+    }, parent.snapshot.taskScope), clientPrincipalId)
   }
 
   async steerRun(runId: string, input: { task?: string; content?: PromptPart[]; idempotencyKey?: string }, clientPrincipalId: string = this.config.clientPrincipalId): Promise<object> {

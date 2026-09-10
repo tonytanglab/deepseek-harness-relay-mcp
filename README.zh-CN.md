@@ -339,6 +339,10 @@ running ── status/wait/steer/cancel ──> succeeded | incomplete | failed 
 
 在 embedded 模式下，DSH Relay 会在需要时激活目标 Session，直接调用原生权限服务，并在提交首条任务提示词前确认最终 preset。提示词中的文字声明不会被当作权限边界；权限 preset 也不会放宽仅位置/范围的任务传递契约。
 
+`start_review`、`start_run` 和 `reply_run` 可携带结构化范围声明：`reviewTargets` 是审核对象，`contextReadScope` 是可按需检索和读取的支持材料范围，`excludedPaths` 是排除路径，`writeScope` 是写入范围。审核计划文件时，目标文件不等于读取白名单；除非用户明确要求只读该文件，否则可把授权仓库或相关子树列入 `contextReadScope`。这些字段会进入 Harness 提示并随 `reply_run` 继承，但它们不是逐路径文件系统强制策略。Harness 的原生权限控制读写模式；所选模型仍可能经其配置的提供商处理读取内容，Relay 使用回环地址不代表全部模型处理均在本地。
+
+当当前对话明确要求使用 Harness 时，调用方可传递 `authorizationBasis: explicit-user-request`，记录用户已经选择 Harness 的事实，供 Codex 审批判断使用。该字段不扩大工作区、上下文、权限、模型提供商或外部操作，也不保证自动审批通过。调用方应优先传递 `list_capabilities` 返回的精确 `provider` 与 `model`，使内容处理目的地可识别。
+
 ## MCP 工具
 
 | 工具 | 用途 |
@@ -354,7 +358,7 @@ running ── status/wait/steer/cancel ──> succeeded | incomplete | failed 
 | `stop_service` | 只移除 Relay 附加状态，不停止 Harness。 |
 | `list_capabilities` | 列出 Provider/模型/推理强度、Agent preset 和原生权限模式。 |
 | `start_run` | 创建或复用会话并提交受跟踪任务。 |
-| `start_review` | 固定使用 Harness 原生 `read-only` 权限提交审查任务。 |
+| `start_review` | 固定使用 Harness 原生 `read-only` 权限提交审查任务，并区分审核目标与支持材料读取范围。 |
 | `steer_run` | 向活动运行插入纠偏指令。 |
 | `get_run` | 读取并对账运行；推荐使用的运行状态入口。 |
 | `get_run_summary` | 将运行投影为稳定的状态、模型、权限、耗时和下一步字段。 |

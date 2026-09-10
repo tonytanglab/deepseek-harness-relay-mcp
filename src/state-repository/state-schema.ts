@@ -20,6 +20,11 @@ const serviceSchema = z.object({
   processId: z.null(), attachedAt: z.string(), stoppedAt: z.string().nullable(),
 }).strict()
 
+const taskScopeSchema = z.object({
+  reviewTargets: z.array(z.string()), contextReadScope: z.array(z.string()),
+  excludedPaths: z.array(z.string()), writeScope: z.array(z.string()), enforcement: z.literal('instruction-only'),
+}).strict()
+
 const runSnapshotSchema = z.object({
   runId: z.string(), operationId: z.string().optional(), idempotencyKey: z.string().optional(),
   serviceId: z.string(), sessionId: z.string(), sessionReused: z.boolean(), parentRunId: z.string().nullable(),
@@ -29,6 +34,7 @@ const runSnapshotSchema = z.object({
   permissionPreset: z.enum(['read-only', 'workspace-write', 'danger-full-access']), agentPreset: z.string().nullable(),
   modelDefaultRestore: z.enum(['restored', 'not-needed', 'skipped-concurrent-change', 'unavailable']),
   warnings: z.array(z.string()), task: z.string(), taskPersisted: z.boolean(), taskImageCount: z.number().int().nonnegative(),
+  taskScope: taskScopeSchema.optional(),
   cancelRequested: z.boolean(), startedAt: z.string(), lastProgressAt: z.string().optional(), finishedAt: z.string().nullable(),
   attentionReason: z.enum(['run_stalled', 'permission_restore_failed']).optional(),
   promptAdmission: z.enum(['pending', 'accepted', 'unknown', 'rejected']), promptMessageId: z.string().nullable(),

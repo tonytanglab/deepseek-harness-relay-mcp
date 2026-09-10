@@ -14,6 +14,14 @@ export type ServiceStatus = 'running' | 'stopped' | 'failed'
 export type PermissionPreset = 'read-only' | 'workspace-write' | 'danger-full-access'
 export type AuthorityMode = 'embedded' | 'standalone'
 
+export interface TaskScopeDeclaration {
+  reviewTargets: string[]
+  contextReadScope: string[]
+  excludedPaths: string[]
+  writeScope: string[]
+  enforcement: 'instruction-only'
+}
+
 export interface StateMigrationMarker {
   sourceSchemaVersion: 1 | 2
   sourcePath: string
@@ -62,6 +70,7 @@ export interface RunSnapshot {
   task: string
   taskPersisted: boolean
   taskImageCount: number
+  taskScope?: TaskScopeDeclaration | undefined
   cancelRequested: boolean
   startedAt: string
   lastProgressAt?: string

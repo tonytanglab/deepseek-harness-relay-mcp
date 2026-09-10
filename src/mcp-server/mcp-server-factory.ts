@@ -16,7 +16,7 @@ const id = z.uuid()
 const serverVersion = typeof __DSH_RELAY_VERSION__ === 'string' ? __DSH_RELAY_VERSION__ : 'development'
 const idempotencyKey = z.string().trim().min(1).max(128).optional()
 const openBrowser = z.boolean().default(false).describe('Keep false unless the user explicitly asks to open the Harness page in the OS browser.')
-const PATH_REFERENCE_ONLY = 'Task parameters are path-reference-only: provide the authorized workspace, file or directory locations, scope, and acceptance criteria. Never embed source text, diffs, file dumps, encoded source, or repository archives. Harness reads named files from the authorized workspace itself. This rule is identical for read-only and write-capable permissions.'
+const PATH_REFERENCE_ONLY = 'Task parameters are path-reference-only: provide the authorized workspace, reviewTargets, contextReadScope, excludedPaths, writeScope, and acceptance criteria. reviewTargets identify what to assess; they are not a read whitelist. contextReadScope declares where Harness may search and read supporting implementation, tests, configuration, and architecture material. Never embed source text, diffs, file dumps, encoded source, or repository archives. Harness reads named files from the authorized workspace itself. These fields are task instructions, not enforced per-path filesystem isolation. The selected Harness model may send content it reads to its configured model provider even though Relay itself uses a loopback address.'
 const HEADLESS_MCP_ONLY = 'Invoke Relay only through these native MCP tools. Never generate or run a temporary Node, PowerShell, Python, or shell client for Relay RPCs; shell fallback bypasses the managed background transport and can open visible console windows. If these tools are unavailable, repair or reload the plugin and continue in a new task.'
 
 export function createServer(relay: RelayFacade, config: RelayConfig, monitoring: MonitoringFacade = new MonitoringFacade(), clientPrincipalId: string = config.clientPrincipalId): McpServer {
@@ -112,6 +112,8 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
       confirmedDangerousPermission: z.boolean().default(false),
       idempotencyKey,
       openBrowser,
+      ...taskScopeInputSchema,
+      authorizationBasis: delegationAuthorization,
     },
     annotations: runAction,
   }, guarded(input => relay.startRun({
@@ -128,6 +130,8 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
     ...(input.permissionPreset === undefined ? {} : { permissionPreset: input.permissionPreset }),
     ...(input.confirmedDangerousPermission ? { confirmedDangerousPermission: true } : {}),
     ...(input.idempotencyKey === undefined ? {} : { idempotencyKey: input.idempotencyKey }),
+    ...taskScopeInput(input),
+    ...(input.authorizationBasis === undefined ? {} : { authorizationBasis: input.authorizationBasis }),
   }, clientPrincipalId).then(withHostPollContract)))
 
   server.registerTool('start_review', {
@@ -145,6 +149,8 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
       agentPreset: z.string().trim().min(1).optional(),
       idempotencyKey,
       openBrowser,
+      ...taskScopeInputSchema,
+      authorizationBasis: delegationAuthorization,
     },
     annotations: reviewAction,
   }, guarded(input => relay.startRun({
@@ -160,6 +166,8 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
     ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
     ...(input.agentPreset === undefined ? {} : { agentPreset: input.agentPreset }),
     ...(input.idempotencyKey === undefined ? {} : { idempotencyKey: input.idempotencyKey }),
+    ...taskScopeInput(input),
+    ...(input.authorizationBasis === undefined ? {} : { authorizationBasis: input.authorizationBasis }),
   }, clientPrincipalId).then(withHostPollContract)))
 
   server.registerTool('steer_run', {
@@ -251,6 +259,8 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
       confirmedDangerousPermission: z.boolean().default(false),
       idempotencyKey,
       openBrowser,
+      ...taskScopeInputSchema,
+      authorizationBasis: delegationAuthorization,
     },
     annotations: runAction,
   }, guarded(input => relay.replyRun(input.runId, {
@@ -263,6 +273,8 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
     ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
     ...(input.confirmedDangerousPermission ? { confirmedDangerousPermission: true } : {}),
     ...(input.idempotencyKey === undefined ? {} : { idempotencyKey: input.idempotencyKey }),
+    ...taskScopeInput(input),
+    ...(input.authorizationBasis === undefined ? {} : { authorizationBasis: input.authorizationBasis }),
   }, clientPrincipalId).then(withHostPollContract)))
 
   server.registerTool('cancel_run', {
@@ -306,6 +318,29 @@ function promptPart(maxCharacters: number) {
     z.object({ type: z.literal('text'), text: z.string().max(maxCharacters).describe(PATH_REFERENCE_ONLY) }),
     z.object({ type: z.literal('image'), mediaType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']), data: z.string().min(1), name: z.string().optional() }),
   ])
+}
+
+const scopePath = z.string().trim().min(1).describe('Workspace-relative path, or an absolute path contained by the authorized workspace.')
+const delegationAuthorization = z.literal('explicit-user-request').optional().describe('Truthful evidence that the user explicitly selected Harness to inspect this workspace. Set only when the current conversation contains that instruction. This records evidence and does not expand permissions or guarantee approval.')
+const taskScopeInputSchema = {
+  reviewTargets: z.array(scopePath).min(1).optional().describe('Subjects to assess. This is not a read whitelist; supply together with contextReadScope.'),
+  contextReadScope: z.array(scopePath).min(1).optional().describe('Workspace paths Harness may search and read for evidence. Use only the targets when the user explicitly requests a target-only review.'),
+  excludedPaths: z.array(scopePath).optional().describe('Paths excluded from contextual reading. This is an instruction declaration, not filesystem enforcement.'),
+  writeScope: z.array(scopePath).optional().describe('Paths Harness may modify. Must be empty for read-only runs; this is an instruction declaration in addition to native permissions.'),
+} as const
+
+function taskScopeInput(input: {
+  reviewTargets?: string[] | undefined
+  contextReadScope?: string[] | undefined
+  excludedPaths?: string[] | undefined
+  writeScope?: string[] | undefined
+}) {
+  return {
+    ...(input.reviewTargets === undefined ? {} : { reviewTargets: input.reviewTargets }),
+    ...(input.contextReadScope === undefined ? {} : { contextReadScope: input.contextReadScope }),
+    ...(input.excludedPaths === undefined ? {} : { excludedPaths: input.excludedPaths }),
+    ...(input.writeScope === undefined ? {} : { writeScope: input.writeScope }),
+  }
 }
 
 const setupInputSchema = {

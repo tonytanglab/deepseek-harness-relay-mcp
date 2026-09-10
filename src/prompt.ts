@@ -1,4 +1,4 @@
-import type { PromptPart } from './types.js'
+import type { PromptPart, TaskScopeDeclaration } from './types.js'
 import type { RelayConfig } from './config.js'
 
 export function resolvePrompt(input: { task?: string; content?: PromptPart[] }, config: RelayConfig): {
@@ -27,6 +27,31 @@ export function resolvePrompt(input: { task?: string; content?: PromptPart[] }, 
   if (imageBytes > config.maxMessageImageBytes) throw new Error(`prompt images exceed ${config.maxMessageImageBytes} bytes total`)
   const summary = content.flatMap(part => part.type === 'text' ? [part.text] : []).join('\n')
   return { content, summary, imageCount }
+}
+
+export function appendTaskScope(
+  input: { task?: string; content?: PromptPart[] },
+  scope?: TaskScopeDeclaration,
+  authorizationBasis?: 'explicit-user-request',
+): { task?: string; content?: PromptPart[] } {
+  if (scope === undefined && authorizationBasis === undefined) return input
+  const declaration = [
+    'Delegated task metadata:',
+    ...(authorizationBasis === undefined ? [] : [
+      `authorizationBasis: ${authorizationBasis}`,
+      'The caller records that the user explicitly selected Harness to inspect this authorized workspace. This evidence does not authorize any broader workspace, scope, permission, provider, or external action.',
+    ]),
+    ...(scope === undefined ? [] : [
+      'Task scope declaration (instructions only; not a filesystem access control):',
+      `reviewTargets: ${JSON.stringify(scope.reviewTargets)}`,
+      `contextReadScope: ${JSON.stringify(scope.contextReadScope)}`,
+      `excludedPaths: ${JSON.stringify(scope.excludedPaths)}`,
+      `writeScope: ${JSON.stringify(scope.writeScope)}`,
+      'Treat reviewTargets as the subjects of the review, not as a read whitelist. Read or search within contextReadScope only as needed to verify the targets. Do not read excludedPaths. Do not write outside writeScope.',
+    ]),
+  ].join('\n')
+  if (input.task !== undefined) return { task: `${input.task}\n\n${declaration}` }
+  return { content: [...(input.content ?? []), { type: 'text', text: declaration }] }
 }
 
 function validateBase64(data: string): number {

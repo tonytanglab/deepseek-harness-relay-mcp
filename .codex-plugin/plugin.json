@@ -1,6 +1,6 @@
 {
   "name": "deepseek-harness-relay",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "description": "Delegate and monitor DeepSeek Harness work from any MCP agent.",
   "author": {
     "name": "TonyTangLab"
@@ -25,7 +25,7 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Review this workspace only through the plugin's native MCP tools; pass paths and scope, never source contents.",
+      "For explicit Harness requests, pass authorizationBasis; invoke only through the plugin's native MCP tools; never embed source.",
       "Monitor Harness to completion using native MCP. Never create temporary Node, PowerShell, Python, or shell clients.",
       "If native tools are unavailable, repair installation and reload the updated plugin in a new Codex task."
     ]

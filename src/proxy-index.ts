@@ -8,6 +8,7 @@ const proxy = new StdioProxyFacade({
   statusFile: runtimePaths.statusFile,
   clientPrincipalId: process.env.DSH_RELAY_CLIENT_PRINCIPAL_ID?.trim() || 'local-user',
   requestTimeoutMs: integer(process.env.DSH_RELAY_PROXY_TIMEOUT_MS, 35_000, 1_000, 120_000),
+  maxTaskCharacters: integer(process.env.DSH_RELAY_MAX_TASK_CHARACTERS, 100_000, 1, 1_000_000),
   autoStart: boolean(process.env.DSH_RELAY_AUTO_START, true),
   autoStartTimeoutMs: integer(process.env.DSH_RELAY_AUTO_START_TIMEOUT_MS, 120_000, 1_000, 300_000),
 })

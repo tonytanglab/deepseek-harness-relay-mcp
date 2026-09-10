@@ -3,6 +3,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
+import { createProductToolCatalog } from '../mcp-server/index.js'
 import { HarnessHostAutostartFacade } from './host-autostart-facade.js'
 import { ProxyDiagnosticsFacade, type ProxyInspection } from './proxy-diagnostics-facade.js'
 import type { ProxyDoctorReport, ProxyRouteFailure, StdioProxyConfig, StdioProxyDependencies } from './types.js'
@@ -39,10 +40,12 @@ export class StdioProxyFacade {
   private remoteAuthorityKey: string | null = null
   private lastError: ProxyRouteFailure | null = null
   private connecting: Promise<boolean> | null = null
+  private readonly productTools: Promise<RemoteTools>
   private connected = false
 
   constructor(private readonly config: StdioProxyConfig, dependencies: StdioProxyDependencies = {}) {
     if (!principalPattern.test(config.clientPrincipalId)) throw new Error('invalid DSH Relay client principal')
+    this.productTools = createProductToolCatalog(config.maxTaskCharacters)
     this.diagnostics = new ProxyDiagnosticsFacade(config.descriptorFile, config.statusFile, dependencies)
     this.hostAutostart = dependencies.hostAutostart
       ?? (config.autoStart === true
@@ -72,10 +75,11 @@ export class StdioProxyFacade {
   }
 
   private async listTools(cursor?: string): Promise<{ tools: RemoteTools; nextCursor?: string }> {
-    const ready = await this.ensureRemote()
-    if (!ready) return { tools: cursor === undefined ? [doctorTool] : [] }
     const remote = this.remote
-    if (remote === null) return { tools: cursor === undefined ? [doctorTool] : [] }
+    if (remote === null) {
+      this.beginRemoteRefresh()
+      return { tools: cursor === undefined ? await this.localToolCatalog() : [] }
+    }
     try {
       const page = await remote.listTools(cursor === undefined ? undefined : { cursor }, { timeout: this.config.requestTimeoutMs })
       this.lastError = null
@@ -87,19 +91,19 @@ export class StdioProxyFacade {
       }
     } catch (error) {
       await this.invalidateRemote(this.diagnostics.remoteFailure(error))
-      return { tools: cursor === undefined ? [doctorTool] : [] }
+      return { tools: cursor === undefined ? await this.localToolCatalog() : [] }
     }
   }
 
   private async callTool(name: string, args: Record<string, unknown> | undefined): Promise<object> {
     if (name === doctorTool.name) {
-      await this.ensureRemote()
+      if (this.remote === null) this.beginRemoteRefresh()
       const report = await this.diagnostics.doctor(relayVersion, this.remote !== null, this.lastError)
       return doctorResult(report)
     }
-    if (!await this.ensureRemote()) return unavailableResult(this.requireFailure())
+    if (!await this.ensureRemote()) return this.unavailableResult(name, this.requireFailure())
     const remote = this.remote
-    if (remote === null) return unavailableResult(this.requireFailure())
+    if (remote === null) return this.unavailableResult(name, this.requireFailure())
     try {
       return await remote.callTool(
         { name, ...(args === undefined ? {} : { arguments: args }) },
@@ -107,10 +111,10 @@ export class StdioProxyFacade {
         { timeout: this.config.requestTimeoutMs },
       )
     } catch (error) {
-      if (isRequestTimeout(error)) return requestTimeoutResult(name, this.config.requestTimeoutMs)
+      if (isRequestTimeout(error)) return this.requestTimeoutResult(name, this.config.requestTimeoutMs)
       const routeFailure = this.diagnostics.remoteFailure(error)
       await this.invalidateRemote(routeFailure)
-      return unavailableResult(routeFailure)
+      return this.unavailableResult(name, routeFailure)
     }
   }
 
@@ -118,6 +122,12 @@ export class StdioProxyFacade {
     if (this.connecting !== null) return this.connecting
     this.connecting = this.refreshRemote().finally(() => { this.connecting = null })
     return this.connecting
+  }
+
+  private beginRemoteRefresh(): void {
+    void this.ensureRemote().catch(error => {
+      this.lastError = this.diagnostics.remoteFailure(error)
+    })
   }
 
   private async refreshRemote(): Promise<boolean> {
@@ -186,6 +196,24 @@ export class StdioProxyFacade {
     void this.local.sendToolListChanged().catch(() => undefined)
   }
 
+  private async localToolCatalog(): Promise<RemoteTools> {
+    const productTools = await this.productTools
+    return [doctorTool, ...productTools.filter(tool => tool.name !== doctorTool.name)]
+  }
+
+  private async supportsStructuredError(toolName: string): Promise<boolean> {
+    const tool = (await this.productTools).find(candidate => candidate.name === toolName)
+    return tool?.outputSchema === undefined
+  }
+
+  private async unavailableResult(toolName: string, routeFailure: ProxyRouteFailure): Promise<object> {
+    return unavailableResult(routeFailure, await this.supportsStructuredError(toolName))
+  }
+
+  private async requestTimeoutResult(toolName: string, timeoutMs: number): Promise<object> {
+    return requestTimeoutResult(toolName, timeoutMs, await this.supportsStructuredError(toolName))
+  }
+
   private requireFailure(): ProxyRouteFailure {
     return this.lastError ?? {
       code: 'RELAY_ROUTE_UNAVAILABLE',
@@ -205,15 +233,15 @@ function doctorResult(report: ProxyDoctorReport): object {
   }
 }
 
-function unavailableResult(routeFailure: ProxyRouteFailure): object {
+function unavailableResult(routeFailure: ProxyRouteFailure, structuredErrors: boolean): object {
   return {
     content: [{ type: 'text', text: `${routeFailure.code}: ${routeFailure.reasonCode}: ${routeFailure.message}` }],
-    structuredContent: routeFailure,
+    ...(structuredErrors ? { structuredContent: routeFailure } : {}),
     isError: true,
   }
 }
 
-function requestTimeoutResult(toolName: string, timeoutMs: number): object {
+function requestTimeoutResult(toolName: string, timeoutMs: number, structuredErrors: boolean): object {
   const timeout = {
     code: 'RELAY_REQUEST_TIMEOUT',
     message: `Remote Relay tool ${JSON.stringify(toolName)} timed out after ${timeoutMs} ms.`,
@@ -223,7 +251,7 @@ function requestTimeoutResult(toolName: string, timeoutMs: number): object {
   }
   return {
     content: [{ type: 'text', text: `${timeout.code}: ${timeout.message}` }],
-    structuredContent: timeout,
+    ...(structuredErrors ? { structuredContent: timeout } : {}),
     isError: true,
   }
 }

@@ -45,7 +45,10 @@ test('same proxy degrades locally and reconnects after the Host restarts', async
   assert.ok(mcpAdapterCreations >= 4)
 
   await firstHost.facade.drain()
-  assert.deepEqual((await firstConnection.client.listTools()).tools.map(tool => tool.name), ['doctor'])
+  const degradedTools = (await firstConnection.client.listTools()).tools.map(tool => tool.name)
+  assert.ok(degradedTools.includes('doctor'))
+  assert.ok(degradedTools.includes('start_review'))
+  assert.ok(degradedTools.includes('wait_run'))
   const degradedDoctor = await firstConnection.client.callTool({ name: 'doctor', arguments: {} })
   assert.equal((degradedDoctor.structuredContent as { errorCode?: unknown }).errorCode, 'REMOTE_DRAINING')
   const unavailable = await firstConnection.client.callTool({ name: 'start_run', arguments: {} })
@@ -57,10 +60,14 @@ test('same proxy degrades locally and reconnects after the Host restarts', async
   t.after(async () => { await secondHost.facade.drain(); await close(secondHost.http) })
   await writeDescriptor(descriptorFile, tokenFile, port, 2)
 
+  let recoveredDoctor = await firstConnection.client.callTool({ name: 'doctor', arguments: {} })
+  for (let attempt = 0; attempt < 20 && (recoveredDoctor.structuredContent as { ok?: unknown }).ok !== true; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 10))
+    recoveredDoctor = await firstConnection.client.callTool({ name: 'doctor', arguments: {} })
+  }
   const recoveredTools = await firstConnection.client.listTools()
   assert.ok(recoveredTools.tools.some(tool => tool.name === 'doctor'))
   assert.ok(recoveredTools.tools.some(tool => tool.name === 'start_run'))
-  const recoveredDoctor = await firstConnection.client.callTool({ name: 'doctor', arguments: {} })
   assert.equal((recoveredDoctor.structuredContent as { ok?: unknown }).ok, true)
   assert.equal(brokerCreations, 2)
   assert.ok(mcpAdapterCreations >= 7)

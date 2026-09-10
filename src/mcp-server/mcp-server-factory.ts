@@ -1,4 +1,7 @@
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import type { RelayConfig } from '../config.js'
 import { HostRpcError } from '../host-client.js'
@@ -10,14 +13,16 @@ import type { DoctorFacts, SetupRequest } from '../setup/index.js'
 import { withHostPollContract } from './host-poll-contract.js'
 
 const id = z.uuid()
+const serverVersion = typeof __DSH_RELAY_VERSION__ === 'string' ? __DSH_RELAY_VERSION__ : 'development'
 const idempotencyKey = z.string().trim().min(1).max(128).optional()
+const openBrowser = z.boolean().default(false).describe('Keep false unless the user explicitly asks to open the Harness page in the OS browser.')
 const PATH_REFERENCE_ONLY = 'Task parameters are path-reference-only: provide the authorized workspace, file or directory locations, scope, and acceptance criteria. Never embed source text, diffs, file dumps, encoded source, or repository archives. Harness reads named files from the authorized workspace itself. This rule is identical for read-only and write-capable permissions.'
 const HEADLESS_MCP_ONLY = 'Invoke Relay only through these native MCP tools. Never generate or run a temporary Node, PowerShell, Python, or shell client for Relay RPCs; shell fallback bypasses the managed background transport and can open visible console windows. If these tools are unavailable, repair or reload the plugin and continue in a new task.'
 
 export function createServer(relay: RelayFacade, config: RelayConfig, monitoring: MonitoringFacade = new MonitoringFacade(), clientPrincipalId: string = config.clientPrincipalId): McpServer {
   const setup = new ClientSetupFacade()
   const server = new McpServer(
-    { name: MCP_SERVER_ID, version: __DSH_RELAY_VERSION__ },
+    { name: MCP_SERVER_ID, version: serverVersion },
     { instructions: `Use DeepSeek Harness native sessions and durable events. ${HEADLESS_MCP_ONLY} ${PATH_REFERENCE_ONLY} Select explicit provider/model/reasoning/preset/permission parameters before the first task, share a verified stable session URL on the first run, then call wait_run until a terminal status. A single wait_run timeout is a slice, not completion. Do not conclude the host turn, skip assistantText, or treat unrelated shell notifications as authorization to stop while status is running or unknown. After a terminal success, consume assistantText and independently verify; if the user asked to review then fix, the calling agent applies accepted findings only after the run is terminal.` },
   )
 
@@ -33,7 +38,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
     inputSchema: setupInputSchema,
     outputSchema: setupPlanOutputSchema,
     annotations: readOnly,
-  }, guarded(input => setup.plan(toSetupRequest(input))))
+  }, guarded(input => setup.plan(toSetupRequest(input)), false))
 
   server.registerTool('setup_doctor', {
     title: `Diagnose a ${PRODUCT_DISPLAY_NAME} client setup plan`,
@@ -44,12 +49,12 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
   }, guarded(input => setup.doctor({
     setup: toSetupRequest(input),
     ...(input.facts === undefined ? {} : { facts: input.facts satisfies DoctorFacts }),
-  })))
+  }), false))
 
   server.registerTool('start_service', {
     title: 'Attach to DeepSeek Harness',
     description: 'Attach an authorized workspace to the existing Harness Host. This never starts or modifies Harness.',
-    inputSchema: { workspace: z.string().min(1), openBrowser: z.boolean().default(false) }, annotations: mutable(true),
+    inputSchema: { workspace: z.string().min(1), openBrowser }, annotations: mutable(true),
   }, guarded(input => relay.startService(input)))
 
   server.registerTool('open_service', {
@@ -68,7 +73,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
     inputSchema: {},
     outputSchema: listWorkspacesOutputSchema,
     annotations: readOnly,
-  }, guarded(() => relay.listWorkspaces()))
+  }, guarded(() => relay.listWorkspaces(), false))
 
   server.registerTool('list_workspace_sessions', {
     title: 'List sessions in a Harness workspace',
@@ -76,7 +81,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
     inputSchema: { workspace: z.string().min(1) },
     outputSchema: listWorkspaceSessionsOutputSchema,
     annotations: readOnly,
-  }, guarded(input => relay.listWorkspaceSessions(input.workspace)))
+  }, guarded(input => relay.listWorkspaceSessions(input.workspace), false))
 
   server.registerTool('stop_service', {
     title: 'Detach from DeepSeek Harness',
@@ -106,7 +111,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
       permissionPreset: z.enum(['read-only', 'workspace-write', 'danger-full-access']).optional(),
       confirmedDangerousPermission: z.boolean().default(false),
       idempotencyKey,
-      openBrowser: z.boolean().default(false),
+      openBrowser,
     },
     annotations: runAction,
   }, guarded(input => relay.startRun({
@@ -139,7 +144,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
       reasoningEffort: z.string().trim().min(1).optional(),
       agentPreset: z.string().trim().min(1).optional(),
       idempotencyKey,
-      openBrowser: z.boolean().default(false),
+      openBrowser,
     },
     annotations: reviewAction,
   }, guarded(input => relay.startRun({
@@ -184,7 +189,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
       ...(snapshot.error === null ? {} : { detail: snapshot.error }),
     }
     return monitoring.project(snapshot, attention === undefined ? {} : { attention })
-  }))
+  }, false))
 
   server.registerTool('read_notifications', {
     title: 'Replay retained DSH Relay notifications',
@@ -192,7 +197,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
     inputSchema: { cursor: z.string().regex(/^(0|[1-9]\d*)$/).optional() },
     outputSchema: notificationPageOutputSchema,
     annotations: readOnly,
-  }, guarded(async input => monitoring.readNotifications(input.cursor)))
+  }, guarded(async input => monitoring.readNotifications(input.cursor), false))
 
   server.registerTool('status_run', {
     title: 'Deprecated: get Harness run status', description: 'Deprecated compatibility alias; use get_run. Scheduled for removal in 0.3.0.', inputSchema: { runId: id }, annotations: readOnly,
@@ -200,7 +205,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
 
   server.registerTool('open_run', {
     title: 'Open a Harness run',
-    description: 'Open the native Harness Web session in the operating system default browser. This does not claim that the page renderer has completed loading.',
+    description: 'Open the native Harness Web session in the operating system default browser. Call only when the user explicitly asks to open or show the Harness page.',
     inputSchema: { runId: id }, annotations: mutable(true),
   }, guarded(input => relay.openRun(input.runId)))
 
@@ -245,7 +250,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
       permissionPreset: z.enum(['read-only', 'workspace-write', 'danger-full-access']).optional(),
       confirmedDangerousPermission: z.boolean().default(false),
       idempotencyKey,
-      openBrowser: z.boolean().default(false),
+      openBrowser,
     },
     annotations: runAction,
   }, guarded(input => relay.replyRun(input.runId, {
@@ -265,6 +270,25 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
   }, guarded(input => relay.cancelRun(input.runId, input.idempotencyKey, clientPrincipalId).then(withHostPollContract)))
 
   return server
+}
+
+/** Build the product tool catalog without requiring a live Harness route. */
+export async function createProductToolCatalog(maxTaskCharacters = 100_000): Promise<Tool[]> {
+  const server = createServer(
+    {} as RelayFacade,
+    { maxTaskCharacters } as RelayConfig,
+    new MonitoringFacade(),
+    'catalog',
+  )
+  const client = new Client({ name: 'dsh-relay-catalog', version: serverVersion })
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+  await server.connect(serverTransport)
+  try {
+    await client.connect(clientTransport)
+    return (await client.listTools()).tools
+  } finally {
+    await Promise.allSettled([client.close(), server.close()])
+  }
 }
 
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const
@@ -438,7 +462,7 @@ function result(value: object) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(structuredContent) }], structuredContent }
 }
 
-function guarded<TInput, TOutput extends object>(operation: (input: TInput) => Promise<TOutput> | TOutput) {
+function guarded<TInput, TOutput extends object>(operation: (input: TInput) => Promise<TOutput> | TOutput, structuredErrors = true) {
   return async (input: TInput) => {
     try { return result(await operation(input)) }
     catch (error) {
@@ -455,7 +479,11 @@ function guarded<TInput, TOutput extends object>(operation: (input: TInput) => P
               ...error.details,
             }
           : { code: 'INTERNAL_ERROR', message: error instanceof Error ? error.message : String(error), retryable: false, nextAction: 'none' }
-      return { content: [{ type: 'text' as const, text: JSON.stringify(structuredContent) }], structuredContent, isError: true }
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(structuredContent) }],
+        ...(structuredErrors ? { structuredContent } : {}),
+        isError: true,
+      }
     }
   }
 }

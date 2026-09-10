@@ -14,8 +14,20 @@ test('delegation skill forbids visible shell and temporary client fallbacks', ()
   assert.match(skill, /continue from a new Codex task/iu)
 })
 
+test('delegation skill keeps Harness browser opening opt-in', () => {
+  assert.match(skill, /Keep Harness headless by default/iu)
+  assert.match(skill, /without calling `open_run`, setting `openBrowser: true`, or opening the OS browser/iu)
+  assert.match(skill, /only when the user explicitly asks to open or show the Harness page/iu)
+  assert.doesNotMatch(skill, /On the first successful run[^\n]*call `open_run`/iu)
+})
+
 test('plugin default prompt keeps Harness review and polling on managed background transport', () => {
-  const prompt = plugin.interface?.defaultPrompt?.join(' ') ?? ''
+  const prompts = plugin.interface?.defaultPrompt ?? []
+  assert.ok(prompts.length > 0 && prompts.length <= 3)
+  for (const prompt of prompts) {
+    assert.ok(prompt.length <= 128, `Codex ignores starter prompts longer than 128 characters: ${prompt.length}`)
+  }
+  const prompt = prompts.join(' ')
   assert.match(prompt, /only through the plugin's native MCP tools/iu)
   assert.match(prompt, /Never create temporary Node, PowerShell, Python, or shell clients/iu)
   assert.match(prompt, /reload the updated plugin in a new Codex task/iu)

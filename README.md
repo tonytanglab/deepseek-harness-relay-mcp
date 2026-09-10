@@ -114,6 +114,8 @@ codex plugin list
 
 The first command registers this project's GitHub marketplace. The second fetches the same-version plugin package from npm and loads its `.mcp.json` plus the `delegate-to-deepseek-harness` Skill in Codex. The Codex layer starts only the stateless `dist/dsh-relay-proxy.mjs`, which discovers and connects to the running Harness bundle through its endpoint descriptor. It does not modify DeepSeek Harness source, the internal bundle configuration of the `web` profile, or `cordis.patch.yml`.
 
+If an update leaves native tools missing and Codex reports `connection closed: initialize response`, check whether the cache directory referenced by the task still contains `dist/dsh-relay-proxy.mjs`. A newer cache directory alone does not prove that the running host uses it. Reinstall from the confirmed marketplace with the Codex CLI used by the desktop app; after saving active work, restart the app if a new task still references the removed cache. Verify native `doctor` and the tool catalog before declaring recovery. Do not substitute a temporary Relay client.
+
 #### Codex built-in MCP generation contract
 
 The Codex plugin manifest must reference both the packaged Skill and MCP declaration:
@@ -199,7 +201,7 @@ After the internal bundle starts, point MCP clients at the universal stdio proxy
 
 The proxy defaults to `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json`; when `DSH_HOME` is unset it consistently falls back to `.dsh` under the user home, and a blank `DSH_PROFILE` falls back to `web`. Set `DSH_RELAY_ENDPOINT_DESCRIPTOR` when using a custom state directory. Client configuration never stores the token. The `harness-relay-mcp` package root is the Harness bundle and ships `harness-relay-mcp` plus `harness-relay-mcp-proxy`; the old `dsh-relay` commands remain compatibility aliases.
 
-Starting with 0.2.3, the internal bundle atomically publishes a credential-free `relay-status.json` beside the endpoint descriptor. The stdio proxy starts its local MCP surface first. If the endpoint is missing, startup failed, owner epochs disagree, the token is unreadable, or POST returns 401/404/405/503, `tools/list` still exposes the local `doctor` and other calls return `RELAY_ROUTE_UNAVAILABLE`. The same proxy reconnects after Host recovery and emits `tools/list_changed`; clients that do not process that notification must call `tools/list` again.
+Starting with 0.2.3, the internal bundle atomically publishes a credential-free `relay-status.json` beside the endpoint descriptor. The stdio proxy starts its local MCP surface first. `tools/list` and the local `doctor` never wait for remote connection or Harness auto-start. The proxy generates the complete product tool catalog from the same registrations as the embedded Relay, so Codex discovers `list_capabilities`, `start_review`, `wait_run`, and the other native tools even while recovery is pending. If the endpoint is missing, startup failed, owner epochs disagree, the token is unreadable, or POST returns 401/404/405/503, calls other than `doctor` return `RELAY_ROUTE_UNAVAILABLE` until the route recovers. The same proxy reconnects after Host recovery and emits `tools/list_changed` so clients can refresh any remote metadata changes.
 
 ## Quick start
 
@@ -295,7 +297,7 @@ running ── status/wait/steer/cancel ──> succeeded | incomplete | failed 
 | `permissionPreset` | No | Native permission preset; defaults to `read-only`. |
 | `confirmedDangerousPermission` | For full access | Must be `true` before `danger-full-access` is accepted. |
 | `idempotencyKey` | Recommended | Stable caller key; a retry with the same request returns the original operation instead of resubmitting. |
-| `openBrowser` | No | Ask the OS to open the native session URL. |
+| `openBrowser` | No | Keep `false` unless the user explicitly asks to open the native session URL. |
 
 ### Image prompts
 
@@ -388,7 +390,7 @@ Each run returns a native URL in this form:
 http://127.0.0.1:3080/?sessionId=<session-id>
 ```
 
-An HTTP 200 response proves only that the Host answered; it does not prove that a very large live transcript finished rendering. The bundled Skill calls `open_run` and verifies the visible workspace and session before presenting the URL as openable. Harness may normalize the address bar back to the Host root while retaining the selected session.
+An HTTP 200 response proves only that the Host answered; it does not prove that a very large live transcript finished rendering. The bundled Skill keeps Harness headless and shares the returned session URL as a clickable link. It calls `open_run` and verifies the visible workspace and session only when the user explicitly asks to open or show the page. Harness may normalize the address bar back to the Host root while retaining the selected session.
 
 ## Configuration
 

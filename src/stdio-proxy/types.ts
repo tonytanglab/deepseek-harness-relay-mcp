@@ -9,6 +9,7 @@ export interface StdioProxyConfig {
   statusFile?: string
   clientPrincipalId: string
   requestTimeoutMs: number
+  maxTaskCharacters?: number
   autoStart?: boolean
   autoStartTimeoutMs?: number
 }

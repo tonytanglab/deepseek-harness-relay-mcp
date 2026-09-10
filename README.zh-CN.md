@@ -114,6 +114,8 @@ codex plugin list
 
 第一条命令登记本项目的 GitHub Marketplace；第二条命令从 npm 获取同版本插件包，并为 Codex 加载 `.mcp.json` 与 `delegate-to-deepseek-harness` Skill。Codex 侧只启动无业务状态的 `dist/dsh-relay-proxy.mjs`，它通过端点描述连接已经运行的 Harness 内部 bundle；这个流程不会修改 DeepSeek Harness 源码、`web` profile 的内部 bundle 配置或 `cordis.patch.yml`。
 
+若更新后原生工具消失，且 Codex 报 `connection closed: initialize response`，先检查任务引用的缓存目录是否仍包含 `dist/dsh-relay-proxy.mjs`。新缓存目录存在不代表运行中的宿主已切换。使用桌面应用对应的 Codex CLI 从已确认的 Marketplace 重装；如果新任务仍引用已移除的缓存，保存进行中的工作后重启应用。必须验证原生 `doctor` 和工具目录后再宣称恢复，不得改用临时 Relay 客户端。
+
 #### Codex 内置 MCP 的生成规范（不要写错入口）
 
 Codex 插件 manifest 必须同时引用 Skill 和包内 MCP 声明：
@@ -208,7 +210,7 @@ pnpm run build
 
 proxy 默认读取 `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json`；未设置 `DSH_HOME` 时统一回退到用户目录下的 `.dsh`，空白 `DSH_PROFILE` 回退到 `web`。自定义状态目录时显式设置 `DSH_RELAY_ENDPOINT_DESCRIPTOR`。客户端配置不保存 token。`harness-relay-mcp` 包根入口是 Harness bundle，同时提供 `harness-relay-mcp`、`harness-relay-mcp-proxy` 命令；旧 `dsh-relay` 命令作为兼容别名保留。
 
-0.2.3 起，内部 bundle 会在 endpoint 同目录原子发布不含凭证的 `relay-status.json`。stdio proxy 先启动本地 MCP；当 endpoint 缺失、状态失败、owner epoch 不匹配、token 不可读或 POST 返回 401/404/405/503 时，`tools/list` 至少保留本地 `doctor`，其他工具统一返回 `RELAY_ROUTE_UNAVAILABLE`。Host 恢复后，同一个 proxy 会重新连接并发送 `tools/list_changed`；不处理该通知的客户端需要主动重新调用 `tools/list`。
+0.2.3 起，内部 bundle 会在 endpoint 同目录原子发布不含凭证的 `relay-status.json`。stdio proxy 先启动本地 MCP；`tools/list` 与本地 `doctor` 不等待远端连接或 Harness 自动恢复。proxy 从 embedded Relay 的同一组注册定义生成完整产品工具目录，因此恢复期间 Codex 仍能发现 `list_capabilities`、`start_review`、`wait_run` 和其他原生工具。当 endpoint 缺失、状态失败、owner epoch 不匹配、token 不可读或 POST 返回 401/404/405/503 时，除 `doctor` 外的调用在路由恢复前统一返回 `RELAY_ROUTE_UNAVAILABLE`。Host 恢复后，同一个 proxy 会重新连接并发送 `tools/list_changed`，让客户端刷新远端元数据变化。
 
 ## 快速开始
 
@@ -304,7 +306,7 @@ running ── status/wait/steer/cancel ──> succeeded | incomplete | failed 
 | `permissionPreset` | 否 | 原生权限 preset，默认为 `read-only`。 |
 | `confirmedDangerousPermission` | 完全访问时必需 | 使用 `danger-full-access` 前必须显式设为 `true`。 |
 | `idempotencyKey` | 建议提供 | 调用方稳定键；相同请求重试时返回原操作，不会重复提交。 |
-| `openBrowser` | 否 | 请求操作系统打开原生会话 URL。 |
+| `openBrowser` | 否 | 默认保持 `false`；仅当用户明确要求打开原生会话 URL 时设为 `true`。 |
 
 ### 图片提示词
 
@@ -397,7 +399,7 @@ embedded Host 还会发布不含凭据的启动契约，仅记录绝对 Node/dsh
 http://127.0.0.1:3080/?sessionId=<session-id>
 ```
 
-HTTP 200 只能证明 Host 已响应，不能证明超长实时对话已经完成浏览器渲染。随附 Skill 会先调用 `open_run`，再验证页面中可见的工作区和会话，然后才把链接作为可打开链接交给用户。Harness 成功选择会话后可能把地址栏规范化回 Host 根地址，但选中的会话仍然保持不变。
+HTTP 200 只能证明 Host 已响应，不能证明超长实时对话已经完成浏览器渲染。随附 Skill 默认保持 Harness 无弹窗运行并直接分享可点击的会话链接；仅当用户明确要求打开或显示页面时才调用 `open_run` 并验证可见的工作区和会话。Harness 成功选择会话后可能把地址栏规范化回 Host 根地址，但选中的会话仍然保持不变。
 
 ## 配置
 

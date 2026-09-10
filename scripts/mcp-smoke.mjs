@@ -35,9 +35,11 @@ try {
     },
   })
   const notifications = await client.callTool({ name: 'read_notifications', arguments: {} })
+  const doctorAfterCalls = await client.callTool({ name: 'doctor', arguments: {} })
   process.stdout.write(`${JSON.stringify({
     tools: tools.tools.map(tool => tool.name),
     doctor: doctor.structuredContent,
+    doctorAfterCalls: doctorAfterCalls.structuredContent,
     capabilities: capabilities.structuredContent,
     setupPlan: setupPlan.structuredContent,
     notifications: notifications.structuredContent,

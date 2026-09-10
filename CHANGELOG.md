@@ -1,6 +1,18 @@
 # CHANGELOG
 
-## 0.2.11
+## 0.2.12
+
+### 2026-09-10 17:09
+
+- 发布 `0.2.12`：完整修复 Codex 冷启动工具目录缺失、默认调用 Harness 时自动打开浏览器，以及结构化错误被 MCP `-32602` 覆盖的问题；Harness 与 Codex 两侧插件同步更新。
+
+### 2026-09-10 16:27
+
+- 修复 Codex 插件三条默认提示超过 128 字符而被宿主忽略的问题，保留原生 MCP、仅传路径和持续监控约束，并增加长度回归检查。
+- 修复 stdio proxy 首次 `tools/list` 在远端连接或 Harness 自动恢复尚未完成时只返回 `doctor`，导致 Codex 固化不完整初始目录的问题；proxy 现在从 embedded Relay 的同一组注册定义生成完整产品工具目录，在默认 1 秒可选 MCP 启动宽限内稳定暴露 `list_capabilities`、`start_review`、`wait_run` 等全部原生工具，远端状态仅影响调用结果。
+- 修复 Codex 侧 Harness Skill 在每次首次运行后强制调用 `open_run` 而弹出浏览器的问题；Harness 调用现在默认保持无弹窗，仅分享可点击的 `webUrl`，只有用户明确要求打开或显示页面时才允许 `open_run` 或 `openBrowser: true`。同时把该约束写入 Harness 侧 MCP 工具描述并增加合同测试。
+- 修复远端不可用或工具内部报错时，proxy/embedded Relay 仍为带 `outputSchema` 的工具返回不匹配 `structuredContent`，导致 MCP SDK 把原始错误覆盖成 `-32602` schema 校验错误的问题；此类错误现在保留在文本内容中且不附带不合法的结构化结果。
+- 补充插件更新后握手失败的排查：核对当前任务引用的缓存入口是否存在，使用桌面应用对应的 Codex CLI 重装；旧缓存引用未刷新时重启应用后再验证，不能只凭新缓存存在宣称加载成功。
 
 ### 2026-09-08 22:50
 

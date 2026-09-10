@@ -1,6 +1,6 @@
 {
   "name": "deepseek-harness-relay",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "Delegate and monitor DeepSeek Harness work from any MCP agent.",
   "author": {
     "name": "TonyTangLab"
@@ -25,9 +25,9 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Use the bundled Harness Relay MCP proxy to delegate this bounded task; do not configure a duplicate MCP server or start another Harness Web.",
-      "Run an independent Harness analysis and monitor it to completion. For both read-only and workspace-write runs, pass only workspace/file locations and scope; never embed source contents in task parameters.",
-      "Call Harness Relay only through the plugin's native MCP tools. Never create temporary Node, PowerShell, Python, or shell clients for start, status, or wait calls; if the tools are unavailable, reload the updated plugin in a new Codex task instead of opening a console fallback."
+      "Review this workspace only through the plugin's native MCP tools; pass paths and scope, never source contents.",
+      "Monitor Harness to completion using native MCP. Never create temporary Node, PowerShell, Python, or shell clients.",
+      "If native tools are unavailable, repair installation and reload the updated plugin in a new Codex task."
     ]
   }
 }

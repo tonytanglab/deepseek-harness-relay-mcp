@@ -1,1 +1,1 @@
-export { createServer } from './mcp-server-factory.js'
+export { createProductToolCatalog, createServer } from './mcp-server-factory.js'

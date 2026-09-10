@@ -105,6 +105,7 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
     const waitRun = tools.tools.find(item => item.name === 'wait_run')
     const startRun = tools.tools.find(item => item.name === 'start_run')
     const startReview = tools.tools.find(item => item.name === 'start_review')
+    const openRun = tools.tools.find(item => item.name === 'open_run')
     assert.match(waitRun?.description ?? '', /A timeout is a slice, not completion/)
     assert.match(waitRun?.description ?? '', /MUST call wait_run again immediately/)
     assert.match(waitRun?.description ?? '', /never poll through a temporary Node, PowerShell, Python, or shell client/)
@@ -112,6 +113,11 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
     assert.match(startRun?.description ?? '', /path-reference-only/)
     assert.match(startReview?.description ?? '', /Never embed source text/)
     assert.match(startReview?.description ?? '', /identical for read-only and write-capable permissions/)
+    assert.match(openRun?.description ?? '', /only when the user explicitly asks/)
+    const startRunProperties = startRun?.inputSchema.properties as Record<string, { description?: string }> | undefined
+    const startReviewProperties = startReview?.inputSchema.properties as Record<string, { description?: string }> | undefined
+    assert.match(startRunProperties?.openBrowser?.description ?? '', /Keep false unless the user explicitly asks/)
+    assert.match(startReviewProperties?.openBrowser?.description ?? '', /Keep false unless the user explicitly asks/)
     const waited = await client.callTool({
       name: 'wait_run',
       arguments: { runId: '5f502f03-3a5e-4e3d-9b18-373306961a79', timeoutMs: 0 },
@@ -147,6 +153,30 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
     assert.equal(pollContract(cancelled).hostMustCallWaitRunAgain, false)
     assert.equal(pollContract(cancelled).runComplete, true)
     assert.equal(pollContract(cancelled).nextTool, 'inspect_error')
+  } finally {
+    await client.close()
+    await server.close()
+  }
+})
+
+test('schema-bearing tools preserve their original error without invalid structured content', async () => {
+  ;(globalThis as Record<string, unknown>).__DSH_RELAY_VERSION__ = 'test'
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+  const relay = {
+    async listWorkspaces() {
+      throw new Error('workspace registry unavailable')
+    },
+  } as unknown as RelayFacade
+  const server = createServer(relay, config())
+  const client = new Client({ name: 'product-error-test', version: '1.0.0' })
+  await server.connect(serverTransport)
+  await client.connect(clientTransport)
+  try {
+    const failed = await client.callTool({ name: 'list_workspaces', arguments: {} })
+    assert.equal(failed.isError, true)
+    assert.equal(failed.structuredContent, undefined)
+    const failedContent = failed.content as Array<{ type: string; text?: string }>
+    assert.match(failedContent[0]?.type === 'text' ? failedContent[0].text ?? '' : '', /workspace registry unavailable/)
   } finally {
     await client.close()
     await server.close()

@@ -67,7 +67,7 @@ test('stdio proxy discovers the authority and transparently forwards tools', asy
   assert.ok(principals.every(principal => principal === 'cursor:project'))
 })
 
-test('stdio proxy initializes locally and exposes doctor when the endpoint is missing', async t => {
+test('stdio proxy initializes locally and exposes the stable product catalog when the endpoint is missing', async t => {
   const root = await temporaryDirectory(t)
   const descriptorFile = join(root, 'relay-endpoint.json')
   await writeReadyStatus(root, 'authority-missing', 1)
@@ -79,7 +79,11 @@ test('stdio proxy initializes locally and exposes doctor when the endpoint is mi
   await client.connect(clientTransport)
   t.after(async () => { await client.close() })
 
-  assert.deepEqual((await client.listTools()).tools.map(tool => tool.name), ['doctor'])
+  const toolNames = (await client.listTools()).tools.map(tool => tool.name)
+  assert.ok(toolNames.includes('doctor'))
+  assert.ok(toolNames.includes('list_capabilities'))
+  assert.ok(toolNames.includes('start_review'))
+  assert.ok(toolNames.includes('wait_run'))
   const doctor = await client.callTool({ name: 'doctor', arguments: {} })
   assert.equal((doctor.structuredContent as { errorCode?: unknown }).errorCode, 'DESCRIPTOR_MISSING')
   const unavailable = await client.callTool({ name: 'start_run', arguments: {} })
@@ -91,6 +95,60 @@ test('stdio proxy initializes locally and exposes doctor when the endpoint is mi
     retryable: true,
     remediation: 'Reload the Harness web profile so Relay can publish a fresh endpoint descriptor.',
   })
+  const unavailableWithOutputSchema = await client.callTool({
+    name: 'setup_plan',
+    arguments: {
+      client: 'cursor',
+      scope: 'project',
+      platform: process.platform,
+      homeDirectory: root,
+      workspaceDirectory: root,
+      nodeExecutable: process.execPath,
+      relayEntry: join(root, 'dsh-relay-proxy.mjs'),
+      endpointDescriptor: descriptorFile,
+    },
+  })
+  assert.equal(unavailableWithOutputSchema.isError, true)
+  assert.equal(unavailableWithOutputSchema.structuredContent, undefined)
+  const unavailableContent = unavailableWithOutputSchema.content as Array<{ type: string; text?: string }>
+  assert.match(unavailableContent[0]?.type === 'text' ? unavailableContent[0].text ?? '' : '', /RELAY_ROUTE_UNAVAILABLE/)
+})
+
+test('stdio proxy answers tools/list with the stable product catalog while Host recovery is still pending', async t => {
+  const root = await temporaryDirectory(t)
+  const descriptorFile = join(root, 'relay-endpoint.json')
+  let finishRecovery: (() => void) | undefined
+  const recoveryGate = new Promise<void>(resolve => { finishRecovery = resolve })
+  const proxy = new StdioProxyFacade(
+    { descriptorFile, clientPrincipalId: 'codex:user', requestTimeoutMs: 500 },
+    {
+      hostAutostart: {
+        async recover(inspection) {
+          await recoveryGate
+          return inspection
+        },
+      },
+    },
+  )
+  const [clientTransport, proxyTransport] = InMemoryTransport.createLinkedPair()
+  const proxyConnection = proxy.connect(proxyTransport)
+  t.after(async () => { await proxy.close() })
+  const client = new Client({ name: 'local', version: '1.0.0' })
+  await client.connect(clientTransport)
+  t.after(async () => { await client.close() })
+
+  const tools = await Promise.race([
+    client.listTools(),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('tools/list blocked on Host recovery')), 100)),
+  ])
+  const toolNames = tools.tools.map(tool => tool.name)
+  assert.ok(toolNames.includes('doctor'))
+  assert.ok(toolNames.includes('list_capabilities'))
+  assert.ok(toolNames.includes('start_review'))
+  assert.ok(toolNames.includes('wait_run'))
+
+  finishRecovery?.()
+  await proxyConnection
 })
 
 test('stdio proxy rejects a status and descriptor epoch mismatch as stale', async t => {
@@ -289,7 +347,9 @@ for (const scenario of [
     await client.connect(clientTransport)
     t.after(async () => { await client.close() })
 
-    assert.deepEqual((await client.listTools()).tools.map(tool => tool.name), ['doctor'])
+    const toolNames = (await client.listTools()).tools.map(tool => tool.name)
+    assert.ok(toolNames.includes('doctor'))
+    assert.ok(toolNames.includes('start_review'))
     const doctor = await client.callTool({ name: 'doctor', arguments: {} })
     assert.equal((doctor.structuredContent as { errorCode?: unknown }).errorCode, scenario.reasonCode)
   })

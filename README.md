@@ -116,6 +116,8 @@ The first command registers this project's GitHub marketplace. The second fetche
 
 If an update leaves native tools missing and Codex reports `connection closed: initialize response`, check whether the cache directory referenced by the task still contains `dist/dsh-relay-proxy.mjs`. A newer cache directory alone does not prove that the running host uses it. Reinstall from the confirmed marketplace with the Codex CLI used by the desktop app; after saving active work, restart the app if a new task still references the removed cache. Verify native `doctor` and the tool catalog before declaring recovery. Do not substitute a temporary Relay client.
 
+When a personal Marketplace points at a local source checkout, the Codex installer copies the files that already exist; it does not run the TypeScript/esbuild build. After every source pull, run `pnpm run prepare:codex-local` in that checkout before generating a cachebuster and running `codex plugin add`. The command builds and verifies all three `dist` entry points, their embedded version, and the proxy's stable full tool catalog. Skipping it can produce a false upgrade where the manifest and install record are new but the MCP process still executes an old bundle. Prefer the repository Marketplace/npm path above for normal installations.
+
 #### Codex built-in MCP generation contract
 
 The Codex plugin manifest must reference both the packaged Skill and MCP declaration:

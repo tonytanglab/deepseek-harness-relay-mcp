@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.2.15
+
+### 2026-09-11 20:17
+
+- 修复 personal Marketplace 从本地源码更新时可能出现“manifest/安装记录为新版，但忽略的 `dist/` 仍为旧版”的升级陷阱：新增 `prepare:codex-local` 与构建版本门禁，逐一校验三套运行产物的内嵌版本，并确认 proxy 包含稳定的完整工具目录入口。
+- 增加项目级 `AGENTS.md`、构建版本回归测试和中英文升级说明；本地安装不得再以 manifest 版本代替运行时验证，必须在新 Codex 任务中核对 `doctor.relayVersion` 与完整工具目录。
+
 ## 0.2.14
 
 ### 2026-09-11 13:37

@@ -7,6 +7,7 @@ declare module '*.mjs' {
   export const promoteArtifacts: any
   export const reclaimBuildLock: any
   export const syncVersions: any
+  export const verifyBuiltRelayVersion: any
   export const withBuildLock: any
   export const BuildLockError: any
 }

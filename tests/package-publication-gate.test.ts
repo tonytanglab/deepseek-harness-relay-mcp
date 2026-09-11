@@ -87,9 +87,12 @@ test('fails closed when the configured package byte budget is exceeded', () => {
 
 test('prepack performs strict TypeScript checking and MCP smoke builds first', () => {
   assert.match(manifest.scripts.prepack ?? '', /tsc --noEmit/)
+  assert.match(manifest.scripts.prepack ?? '', /verify-built-relay-version\.mjs/)
   assert.match(manifest.scripts.prepack ?? '', /validate-package-files\.mjs/)
+  assert.match(manifest.scripts['prepare:codex-local'] ?? '', /verify-built-relay-version\.mjs/)
   const smoke = manifest.scripts['test:mcp'] ?? ''
   assert.ok(smoke.indexOf('build.mjs') >= 0)
+  assert.ok(smoke.indexOf('verify-built-relay-version.mjs') > smoke.indexOf('build.mjs'))
   assert.ok(smoke.indexOf('build.mjs') < smoke.indexOf('mcp-smoke.mjs'))
 })
 

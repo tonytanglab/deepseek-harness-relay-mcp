@@ -116,6 +116,8 @@ codex plugin list
 
 若更新后原生工具消失，且 Codex 报 `connection closed: initialize response`，先检查任务引用的缓存目录是否仍包含 `dist/dsh-relay-proxy.mjs`。新缓存目录存在不代表运行中的宿主已切换。使用桌面应用对应的 Codex CLI 从已确认的 Marketplace 重装；如果新任务仍引用已移除的缓存，保存进行中的工作后重启应用。必须验证原生 `doctor` 和工具目录后再宣称恢复，不得改用临时 Relay 客户端。
 
+如果 personal Marketplace 指向本地源码目录，Codex 安装器只复制现有文件，不会运行 TypeScript/esbuild 构建。每次拉取源码后必须先在该目录执行 `pnpm run prepare:codex-local`；命令会构建并校验三套 `dist` 产物的内嵌版本及 proxy 的完整工具目录，然后才能生成 cachebuster 并执行 `codex plugin add`。否则可能出现 manifest 和安装记录显示新版、实际 MCP 进程仍运行旧 bundle 的假升级。正式使用优先采用上面的仓库 Marketplace/npm 安装路径。
+
 #### Codex 内置 MCP 的生成规范（不要写错入口）
 
 Codex 插件 manifest 必须同时引用 Skill 和包内 MCP 声明：

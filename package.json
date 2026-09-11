@@ -1,6 +1,6 @@
 {
   "name": "harness-relay-mcp",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "description": "Delegate and monitor DeepSeek Harness work from any MCP agent.",
   "author": "TonyTangLab",
   "repository": {
@@ -69,11 +69,13 @@
   },
   "scripts": {
     "build": "node ./scripts/sync-version.mjs && tsc --noEmit && node ./scripts/build.mjs",
+    "prepare:codex-local": "node ./scripts/sync-version.mjs && tsc --noEmit && node ./scripts/build.mjs && node ./scripts/verify-built-relay-version.mjs",
+    "check:built-version": "node ./scripts/verify-built-relay-version.mjs",
     "check:version": "node ./scripts/sync-version.mjs --check",
-    "prepack": "node ./scripts/sync-version.mjs && tsc --noEmit && node ./scripts/build.mjs && node ./scripts/validate-package-files.mjs",
+    "prepack": "node ./scripts/sync-version.mjs && tsc --noEmit && node ./scripts/build.mjs && node ./scripts/verify-built-relay-version.mjs && node ./scripts/validate-package-files.mjs",
     "pretest": "node ./scripts/sync-version.mjs --check",
     "test": "tsx --test ./tests/*.test.ts",
-    "test:mcp": "node ./scripts/sync-version.mjs && tsc --noEmit && node ./scripts/build.mjs && node ./scripts/mcp-smoke.mjs",
+    "test:mcp": "node ./scripts/sync-version.mjs && tsc --noEmit && node ./scripts/build.mjs && node ./scripts/verify-built-relay-version.mjs && node ./scripts/mcp-smoke.mjs",
     "check:package": "node ./scripts/validate-package-files.mjs"
   },
   "dependencies": {

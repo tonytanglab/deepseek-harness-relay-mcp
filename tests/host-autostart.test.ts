@@ -6,6 +6,7 @@ import test, { type TestContext } from 'node:test'
 import type { RelayHostLauncher, RelayStatusDocument } from '../src/relay-runtime/index.js'
 import { FileLockFacade, type FilePermissionBackend } from '../src/state-repository/index.js'
 import {
+  backgroundSpawnOptions,
   HarnessHostAutostartFacade,
   type HarnessHostAutostartDependencies,
   type ProxyInspection,
@@ -58,6 +59,24 @@ test('auto-start replays a recorded tsx ESM source launcher vector', async t => 
 
   assert.equal(result.failure, null)
   assert.deepEqual(launched, launcher)
+})
+
+test('Windows background launch hides the console without requesting a detached console', async t => {
+  const root = await temporaryDirectory(t)
+  const options = backgroundSpawnOptions(testLauncher(root), 'win32')
+
+  assert.equal(options.windowsHide, true)
+  assert.equal(options.detached, false)
+  assert.equal(options.stdio, 'ignore')
+})
+
+test('POSIX background launch remains detached', async t => {
+  const root = await temporaryDirectory(t)
+  const options = backgroundSpawnOptions(testLauncher(root), 'linux')
+
+  assert.equal(options.windowsHide, true)
+  assert.equal(options.detached, true)
+  assert.equal(options.stdio, 'ignore')
 })
 
 test('auto-start rejects a raw Node source launcher contract without spawning', async t => {

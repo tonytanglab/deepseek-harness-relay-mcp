@@ -43,7 +43,7 @@ export class HarnessHostAutostartFacade {
     private readonly timeoutMs: number,
     dependencies: HarnessHostAutostartDependencies = {},
   ) {
-    this.spawnHost = dependencies.spawnHost ?? spawnDetachedHarness
+    this.spawnHost = dependencies.spawnHost ?? spawnBackgroundHarness
     this.probePort = dependencies.probePort ?? probeLoopbackPort
     this.delay = dependencies.delay ?? (timeoutMs => new Promise(resolveDelay => setTimeout(resolveDelay, timeoutMs)))
     this.lockFactory = dependencies.lockFactory ?? (() => new FileLockFacade({ timeoutMs }))
@@ -174,15 +174,9 @@ function routeFailure(
   return { code: 'RELAY_ROUTE_UNAVAILABLE', reasonCode, message, retryable: true, remediation }
 }
 
-async function spawnDetachedHarness(launcher: RelayHostLauncher): Promise<void> {
+async function spawnBackgroundHarness(launcher: RelayHostLauncher): Promise<void> {
   await new Promise<void>((resolveSpawn, rejectSpawn) => {
-    const child = spawn(launcher.command, launcher.args, {
-      cwd: launcher.cwd,
-      env: { ...process.env, ...launcher.environment },
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-    })
+    const child = spawn(launcher.command, launcher.args, backgroundSpawnOptions(launcher))
     child.once('error', rejectSpawn)
     child.once('spawn', () => {
       child.off('error', rejectSpawn)
@@ -190,6 +184,18 @@ async function spawnDetachedHarness(launcher: RelayHostLauncher): Promise<void> 
       resolveSpawn()
     })
   })
+}
+
+export function backgroundSpawnOptions(launcher: RelayHostLauncher, platform: NodeJS.Platform = process.platform) {
+  return {
+    cwd: launcher.cwd,
+    env: { ...process.env, ...launcher.environment },
+    // A detached Windows process requests its own console. That creation flag can defeat
+    // windowsHide/CREATE_NO_WINDOW and flash a visible Node console during Relay recovery.
+    detached: platform !== 'win32',
+    stdio: 'ignore' as const,
+    windowsHide: true,
+  }
 }
 
 async function probeLoopbackPort(port: number): Promise<LoopbackPortState> {

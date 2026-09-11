@@ -1,5 +1,6 @@
 export { readEndpointDescriptor } from './descriptor-reader.js'
 export {
+  backgroundSpawnOptions,
   HarnessHostAutostartFacade,
   type HarnessHostAutostartDependencies,
   type HarnessHostAutostartLock,

@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.2.14
+
+### 2026-09-11 13:37
+
+- 修复 Windows 上 Relay 自动恢复 Harness 时仍会弹出 Node/DOS 控制台窗口的问题：后台启动不再同时使用会请求独立控制台的 `detached` 与 `windowsHide`，同时保留标准流断开和窗口隐藏。
+- 增加 Windows 与非 Windows 后台启动选项回归测试；非 Windows 平台继续以 detached 方式运行，避免改变既有生命周期行为。
+
 ## 0.2.13
 
 ### 2026-09-10 18:33

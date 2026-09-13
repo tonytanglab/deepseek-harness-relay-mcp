@@ -120,6 +120,8 @@ When a personal Marketplace points at a local source checkout, the Codex install
 
 #### Codex built-in MCP generation contract
 
+For intermittent Windows console popups, also check the Harness host: native Job execution must hide its Node runner with `windowsHide: true` and create native `CreateProcessW`/`CreateProcessAsUserW` targets with `CREATE_NO_WINDOW`. Updating Relay or fixing only the ordinary spawn fallback does not cover this path. Restart the actual Host after updating Harness and verify console visibility, output, exit, and cleanup behavior.
+
 The Codex plugin manifest must reference both the packaged Skill and MCP declaration:
 
 ```json

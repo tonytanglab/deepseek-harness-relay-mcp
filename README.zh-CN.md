@@ -120,6 +120,8 @@ codex plugin list
 
 #### Codex 内置 MCP 的生成规范（不要写错入口）
 
+Windows 偶发控制台弹窗还需检查 Harness 本体：启用原生 Job 子进程管理时，Node runner 必须设置 `windowsHide: true`，原生 `CreateProcessW`/`CreateProcessAsUserW` 目标必须使用 `CREATE_NO_WINDOW`。仅更新 Relay 或修复 Harness 的普通 spawn 回退入口不足以覆盖这条路径；更新 Harness 后须重启实际 Host，并验证控制台可见性及输出、退出和清理行为。
+
 Codex 插件 manifest 必须同时引用 Skill 和包内 MCP 声明：
 
 ```json

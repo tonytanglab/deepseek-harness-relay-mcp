@@ -345,7 +345,7 @@ running ── status/wait/steer/cancel ──> succeeded | incomplete | failed 
 
 `start_review`、`start_run` 和 `reply_run` 可携带结构化范围声明：`reviewTargets` 是审核对象，`contextReadScope` 是可按需检索和读取的支持材料范围，`excludedPaths` 是排除路径，`writeScope` 是写入范围。审核计划文件时，目标文件不等于读取白名单；除非用户明确要求只读该文件，否则可把授权仓库或相关子树列入 `contextReadScope`。这些字段会进入 Harness 提示并随 `reply_run` 继承，但它们不是逐路径文件系统强制策略。Harness 的原生权限控制读写模式；所选模型仍可能经其配置的提供商处理读取内容，Relay 使用回环地址不代表全部模型处理均在本地。
 
-当当前对话明确要求使用 Harness 时，调用方可传递 `authorizationBasis: explicit-user-request`，记录用户已经选择 Harness 的事实，供 Codex 审批判断使用。该字段不扩大工作区、上下文、权限、模型提供商或外部操作，也不保证自动审批通过。调用方应优先传递 `list_capabilities` 返回的精确 `provider` 与 `model`，使内容处理目的地可识别。
+`start_review` 强制要求精确的 `provider`、精确的 `model` 和 `authorizationBasis: explicit-user-request`。用户明确要求 Harness 或点名 Harness 模型审查已识别的工作区或文件，即已授权所选目的地处理范围内的读取内容；调用方不得仅因模型提供商在外部处理内容而再次索要确认。该标记为 Codex 审批记录既有选择，不扩大工作区、上下文、权限、处理目的地或允许的外部操作。`start_run` 与 `reply_run` 为兼容非审查流程仍保留可选标记。
 
 ## MCP 工具
 

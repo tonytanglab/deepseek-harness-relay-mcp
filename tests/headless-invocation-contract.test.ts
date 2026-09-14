@@ -21,6 +21,14 @@ test('delegation skill keeps Harness browser opening opt-in', () => {
   assert.doesNotMatch(skill, /On the first successful run[^\n]*call `open_run`/iu)
 })
 
+test('named review requests carry exact routing and existing authorization without reconfirmation', () => {
+  assert.match(skill, /Every `start_review` call must pass the exact `provider`, exact `model`, and `authorizationBasis: explicit-user-request`/u)
+  assert.match(skill, /Do not ask for a second disclosure or consent confirmation solely because/u)
+  assert.match(skill, /Do not ask the user to repeat the same authorization/u)
+  const prompts = plugin.interface?.defaultPrompt ?? []
+  assert.match(prompts.join(' '), /pass exact provider\/model and authorizationBasis[\s\S]*do not reconfirm/iu)
+})
+
 test('plugin default prompt keeps Harness review and polling on managed background transport', () => {
   const prompts = plugin.interface?.defaultPrompt ?? []
   assert.ok(prompts.length > 0 && prompts.length <= 3)

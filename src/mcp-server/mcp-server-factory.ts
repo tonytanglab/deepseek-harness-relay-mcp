@@ -136,21 +136,21 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
 
   server.registerTool('start_review', {
     title: 'Dispatch a read-only Harness review',
-    description: `Create or reuse a native Harness session with the permission preset fixed to read-only, then return a stable session link. ${PATH_REFERENCE_ONLY} After start succeeds, share webUrl and keep wait_run until succeeded/failed/cancelled/needs_attention. The calling agent MUST read assistantText before claiming the review is done. If the parent user asked to review then fix, apply accepted findings only after the run is terminal; do not treat a still-running review as finished.`,
+    description: `Create or reuse a native Harness session with the permission preset fixed to read-only. Exact provider, model, and authorizationBasis are required so the user's existing named-model request is machine-identifiable on the first attempt; do not ask the user to repeat that authorization solely because provider processing is external. ${PATH_REFERENCE_ONLY} After start succeeds, share webUrl and keep wait_run until succeeded/failed/cancelled/needs_attention. The calling agent MUST read assistantText before claiming the review is done. If the parent user asked to review then fix, apply accepted findings only after the run is terminal; do not treat a still-running review as finished.`,
     inputSchema: {
       task: delegatedTask(config.maxTaskCharacters).optional(),
       content: z.array(promptPart(config.maxTaskCharacters)).min(1).describe(PATH_REFERENCE_ONLY).optional(),
       workspace: z.string().min(1).describe('Authorized absolute Harness workspace root; Harness reads named in-scope files from here.'),
       sessionId: z.string().min(1).optional(),
       sessionMode: z.enum(['fresh', 'latest-idle']).optional(),
-      provider: z.string().trim().min(1).optional(),
-      model: z.string().trim().min(1).optional(),
+      provider: z.string().trim().min(1).describe('Exact provider returned by list_capabilities. Required so approval can identify the content-processing destination.'),
+      model: z.string().trim().min(1).describe('Exact model returned by list_capabilities. Required so approval can identify the content-processing destination.'),
       reasoningEffort: z.string().trim().min(1).optional(),
       agentPreset: z.string().trim().min(1).optional(),
       idempotencyKey,
       openBrowser,
       ...taskScopeInputSchema,
-      authorizationBasis: delegationAuthorization,
+      authorizationBasis: requiredReviewAuthorization,
     },
     annotations: reviewAction,
   }, guarded(input => relay.startRun({
@@ -161,13 +161,13 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
     ...(input.content === undefined ? {} : { content: input.content }),
     ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
     ...(input.sessionMode === undefined ? {} : { sessionMode: input.sessionMode }),
-    ...(input.provider === undefined ? {} : { provider: input.provider }),
-    ...(input.model === undefined ? {} : { model: input.model }),
+    provider: input.provider,
+    model: input.model,
     ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
     ...(input.agentPreset === undefined ? {} : { agentPreset: input.agentPreset }),
     ...(input.idempotencyKey === undefined ? {} : { idempotencyKey: input.idempotencyKey }),
     ...taskScopeInput(input),
-    ...(input.authorizationBasis === undefined ? {} : { authorizationBasis: input.authorizationBasis }),
+    authorizationBasis: input.authorizationBasis,
   }, clientPrincipalId).then(withHostPollContract)))
 
   server.registerTool('steer_run', {
@@ -321,7 +321,9 @@ function promptPart(maxCharacters: number) {
 }
 
 const scopePath = z.string().trim().min(1).describe('Workspace-relative path, or an absolute path contained by the authorized workspace.')
-const delegationAuthorization = z.literal('explicit-user-request').optional().describe('Truthful evidence that the user explicitly selected Harness to inspect this workspace. Set only when the current conversation contains that instruction. This records evidence and does not expand permissions or guarantee approval.')
+const authorizationDescription = 'Truthful evidence that the user explicitly selected Harness or this named Harness model to inspect the stated workspace scope. The current explicit request is sufficient authorization for that selected provider to process in-scope reads; do not ask the user to repeat authorization solely because provider processing is external. This field does not broaden the workspace, scope, permissions, destination, or allowed external actions.'
+const requiredReviewAuthorization = z.literal('explicit-user-request').describe(authorizationDescription)
+const delegationAuthorization = requiredReviewAuthorization.optional()
 const taskScopeInputSchema = {
   reviewTargets: z.array(scopePath).min(1).optional().describe('Subjects to assess. This is not a read whitelist; supply together with contextReadScope.'),
   contextReadScope: z.array(scopePath).min(1).optional().describe('Workspace paths Harness may search and read for evidence. Use only the targets when the user explicitly requests a target-only review.'),

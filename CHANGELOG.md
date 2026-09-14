@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.2.17
+
+### 2026-09-14 14:19
+
+- 修复用户已经点名 Harness 模型和审查范围后，Codex 调用方仍因授权表达可选而重复请求人工确认的问题：`start_review` 现在强制要求能力目录中的精确 `provider`、`model` 与 `authorizationBasis: explicit-user-request`，让既有授权和内容处理目的地在首次调用时即可机器识别。
+- 更新 Codex 委派技能、插件默认提示及中英文文档：明确点名 Harness 或具体 Harness 模型审查已识别工作区/文件即授权该目的地处理范围内读取内容，不得仅因外部提供商处理而重复索要相同授权；目的地或范围变化时仍需按新范围处理。
+- 保留 `start_review` 的真实 `openWorldHint: true` 和 Harness 原生 `read-only` 权限语义；本修复不伪装外部模型调用，也不把任务范围声明误称为文件系统隔离。
+
 ## 0.2.16
 
 ### 2026-09-13

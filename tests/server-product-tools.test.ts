@@ -95,10 +95,23 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
     const sessions = await client.callTool({ name: 'list_workspace_sessions', arguments: { workspace: 'D:\\work\\demo' } })
     assert.deepEqual((sessions.structuredContent as { sessions?: unknown[] }).sessions, [])
 
+    const missingAuthorization = await client.callTool({
+      name: 'start_review',
+      arguments: { workspace: 'D:\\work\\demo', task: 'review', provider: 'kimi-coding', model: 'k3' },
+    })
+    assert.equal(missingAuthorization.isError, true)
+    const missingRoute = await client.callTool({
+      name: 'start_review',
+      arguments: { workspace: 'D:\\work\\demo', task: 'review', authorizationBasis: 'explicit-user-request' },
+    })
+    assert.equal(missingRoute.isError, true)
+    assert.equal(dispatched.length, 0)
+
     await client.callTool({
       name: 'start_review',
       arguments: {
         workspace: 'D:\\work\\demo', task: 'review', sessionMode: 'latest-idle',
+        provider: 'kimi-coding', model: 'k3',
         reviewTargets: ['docs/plan.md'], contextReadScope: ['.'], excludedPaths: ['secrets'],
         authorizationBasis: 'explicit-user-request',
       },
@@ -108,6 +121,8 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
     assert.deepEqual(dispatched[0]?.reviewTargets, ['docs/plan.md'])
     assert.deepEqual(dispatched[0]?.contextReadScope, ['.'])
     assert.deepEqual(dispatched[0]?.excludedPaths, ['secrets'])
+    assert.equal(dispatched[0]?.provider, 'kimi-coding')
+    assert.equal(dispatched[0]?.model, 'k3')
     assert.equal(dispatched[0]?.authorizationBasis, 'explicit-user-request')
 
     const waitRun = tools.tools.find(item => item.name === 'wait_run')
@@ -127,9 +142,12 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
     assert.match(openRun?.description ?? '', /only when the user explicitly asks/)
     const startRunProperties = startRun?.inputSchema.properties as Record<string, { description?: string }> | undefined
     const startReviewProperties = startReview?.inputSchema.properties as Record<string, { description?: string }> | undefined
+    const startReviewRequired = startReview?.inputSchema.required as string[] | undefined
     assert.match(startRunProperties?.openBrowser?.description ?? '', /Keep false unless the user explicitly asks/)
     assert.match(startReviewProperties?.openBrowser?.description ?? '', /Keep false unless the user explicitly asks/)
-    assert.match(startReviewProperties?.authorizationBasis?.description ?? '', /does not expand permissions or guarantee approval/)
+    assert.deepEqual(startReviewRequired?.filter(name => ['provider', 'model', 'authorizationBasis'].includes(name)).sort(), ['authorizationBasis', 'model', 'provider'])
+    assert.match(startReviewProperties?.authorizationBasis?.description ?? '', /current explicit request is sufficient authorization/)
+    assert.match(startReviewProperties?.authorizationBasis?.description ?? '', /do not ask the user to repeat authorization/)
     const waited = await client.callTool({
       name: 'wait_run',
       arguments: { runId: '5f502f03-3a5e-4e3d-9b18-373306961a79', timeoutMs: 0 },

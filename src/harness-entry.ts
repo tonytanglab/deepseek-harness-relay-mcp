@@ -41,6 +41,7 @@ import {
   type RelayStatusWriteInput,
 } from './relay-runtime/index.js'
 import { RelayStateStore } from './state-store.js'
+import { UserInteractionFacade, installNativeAnswerer, nativeInteractionOwner, type NativeInteractionContext } from './user-interactions/index.js'
 
 class RelayStartupError extends Error {
   readonly name = 'RelayStartupError'
@@ -123,6 +124,7 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
     let unregister: (() => void) | undefined
     let eventHandle: { dispose(): Promise<void> } | undefined
     let http: McpHttpFacade | undefined
+    let disposeAnswerer: (() => void) | undefined
     try {
       paths = runtime.resolve({
         mode: 'embedded',
@@ -170,10 +172,16 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
         DSH_RELAY_STATE_FILE: paths.stateFile,
         DSH_RELAY_CLIENT_PRINCIPAL_ID: 'embedded-authority',
       })
-      const relay = new RelayFacade(relayConfig, fetch, adapters.gateway, {
+      const interactionContext = ctx as unknown as NativeInteractionContext
+      const interactions: UserInteractionFacade = new UserInteractionFacade(
+        agent => nativeInteractionOwner(interactionContext, agent, sessionId => relay.interactionOwner(sessionId)),
+      )
+      const relay: RelayFacade = new RelayFacade(relayConfig, fetch, adapters.gateway, {
         stateStore: stateStoreOptions,
         permissionGateway: adapters.permissions,
+        interactions,
       })
+      disposeAnswerer = installNativeAnswerer(interactionContext, interactions)
       const monitoring = new MonitoringFacade()
       if (adapters.gateway.supportsEventStreams()) {
         let eventMonitoring: EventMonitoringFacade
@@ -212,6 +220,7 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
       await writeRelayStatus(status, lifecycleStatus(paths, authorityId, instanceId, hostIdentity, 'ready', lease.record, null))
       return {
         async disposeInfrastructure({ drainTimeoutMs: _drainTimeoutMs }) {
+          disposeAnswerer?.()
           let cleanupError: unknown
           try {
             await cleanupEmbeddedInfrastructure({
@@ -235,6 +244,7 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
         },
       }
     } catch (error) {
+      disposeAnswerer?.()
       await tryWriteRelayStatus(status, lifecycleStatus(paths, authorityId, instanceId, hostIdentity, 'failed', lease?.record ?? null, toRelayStatusError(error)))
       await cleanupEmbeddedInfrastructure({
         unregister,

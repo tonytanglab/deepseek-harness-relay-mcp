@@ -8,7 +8,7 @@ export enum AttentionReason {
   RunStalled = 'run_stalled',
 }
 
-export type NextAction = 'wait' | 'reply' | 'cancel' | 'open-session' | 'none'
+export type NextAction = 'wait' | 'reply' | 'respond-interaction' | 'cancel' | 'open-session' | 'none'
 
 export interface RunAttention {
   reason: AttentionReason

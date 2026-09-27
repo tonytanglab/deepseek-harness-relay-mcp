@@ -10,6 +10,7 @@ import {
 
 export const name = HARNESS_PLUGIN_NAME
 export const inject = [
+  'agents',
   'typertGateway',
   'webServer',
   'sessions',

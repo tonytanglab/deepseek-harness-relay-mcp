@@ -14,6 +14,7 @@ export class RunReconciler {
     private readonly operations: Map<string, OperationRecord>,
     private readonly journal: OperationJournal,
     private readonly permissions: PermissionController,
+    private readonly hasPendingInteraction: (runId: string) => boolean = () => false,
   ) {}
 
   async refresh(run: RunRecord): Promise<void> {
@@ -176,6 +177,7 @@ export class RunReconciler {
   }
 
   private markStalled(run: RunRecord): void {
+    if (this.hasPendingInteraction(run.snapshot.runId)) return
     const lastProgressAt = run.snapshot.lastProgressAt ?? run.snapshot.startedAt
     if (Date.now() - Date.parse(lastProgressAt) < this.config.runStallMs) return
     run.snapshot.status = 'needs_attention'

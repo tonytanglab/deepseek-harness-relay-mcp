@@ -1,3 +1,5 @@
+import type { PendingInteraction } from './user-interactions/index.js'
+
 export type PromptPart =
   | { type: 'text'; text: string }
   | { type: 'image'; mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'; data: string; name?: string | undefined }
@@ -75,7 +77,9 @@ export interface RunSnapshot {
   startedAt: string
   lastProgressAt?: string
   finishedAt: string | null
-  attentionReason?: 'run_stalled' | 'permission_restore_failed'
+  attentionReason?: 'run_stalled' | 'permission_restore_failed' | 'permission_confirm' | 'await_user_answer'
+  /** Ephemeral Host requests, projected at read time; never persisted as resumable tickets. */
+  pendingInteractions?: PendingInteraction[]
   promptAdmission: PromptAdmission
   promptMessageId: string | null
   assistantText: string

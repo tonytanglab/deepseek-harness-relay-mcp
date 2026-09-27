@@ -11,6 +11,7 @@ import { SessionRoutingFacade, type WorkspaceSessionSummary } from '../session-r
 import { RelayStateStore } from '../state-store.js'
 import type { ModelSelection, OperationRecord, PermissionLease, PersistedRelayState, PromptPart, RunSnapshot, ServiceSnapshot } from '../types.js'
 import { WorkspaceRoutingFacade, type WorkspaceResolution } from '../workspace-routing/index.js'
+import { InteractionError, type InteractionOwner, type InteractionResponse, type UserInteractionFacade } from '../user-interactions/index.js'
 import { RelayError } from './errors.js'
 import { cloneRun, delay, errorText, persistedSnapshot } from './helpers.js'
 import type { RunRecord } from './internal-types.js'
@@ -42,8 +43,10 @@ export class RelayFacade {
   private readonly promptAdmission: PromptAdmissionController
   private readonly workspaceRouting: WorkspaceRoutingFacade
   private readonly sessionRouting: SessionRoutingFacade
+  private readonly interactions: UserInteractionFacade | undefined
 
   constructor(private readonly config: RelayConfig, fetchImpl: typeof fetch = fetch, gateway?: HarnessGatewayFacade, options: RelayFacadeOptions = {}) {
+    this.interactions = options.interactions
     this.gateway = gateway ?? createHttpHarnessGateway(config.hostUrl, config.rpcTimeoutMs, fetchImpl)
     this.modelSelection = new ModelSelectionFacade(this.gateway)
     this.stateStore = new RelayStateStore(config.stateFile, options.stateStore)
@@ -54,7 +57,8 @@ export class RelayFacade {
     )
     const permissionGateway = options.permissionGateway ?? new PermissionGatewayFacade(new ExternalPermissionProvider(this.gateway))
     this.permissions = new PermissionController(permissionGateway, this.permissionLeases, () => this.persistState(), config.permissionLeaseMs)
-    this.reconciler = new RunReconciler(this.gateway, config, this.activeSessions, this.operations, this.journal, this.permissions)
+    this.reconciler = new RunReconciler(this.gateway, config, this.activeSessions, this.operations, this.journal, this.permissions,
+      runId => this.interactions?.hasPending(runId) ?? false)
     this.promptAdmission = new PromptAdmissionController(this.gateway, this.journal, this.reconciler)
     this.workspaceRouting = new WorkspaceRoutingFacade(this.gateway, config.allowedWorkspaceRoots)
     this.sessionRouting = new SessionRoutingFacade(this.gateway)
@@ -412,12 +416,56 @@ export class RelayFacade {
     return { accepted: true, messageId, durable: true, operationId: operation.operationId, run: cloneRun(run.snapshot) }
   }
 
-  async getRun(runId: string): Promise<RunSnapshot> {
+  async getRun(runId: string, clientPrincipalId: string = this.config.clientPrincipalId): Promise<RunSnapshot> {
     await this.ready
     const run = this.requireRun(runId)
     await this.reconciler.refresh(run)
     await this.persistState()
-    return cloneRun(run.snapshot)
+    return this.projectInteractions(run.snapshot, clientPrincipalId)
+  }
+
+  /** Native answerers may claim only the active run's session, never a completed or foreign session. */
+  interactionOwner(sessionId: string): InteractionOwner | undefined {
+    for (const runId of this.activeSessions.values()) {
+      const run = this.runs.get(runId)
+      if (run === undefined) continue
+      const snapshot = run.snapshot
+      if (snapshot.sessionId !== sessionId || snapshot.cancelRequested || snapshot.finishedAt !== null
+        || (snapshot.status !== 'running' && snapshot.attentionReason !== 'run_stalled')) continue
+      const operation = snapshot.operationId === undefined ? undefined : this.operations.get(snapshot.operationId)
+      if (operation !== undefined) return { runId: snapshot.runId, sessionId, clientPrincipalId: operation.clientPrincipalId }
+    }
+    return undefined
+  }
+
+  async listRunInteractions(runId: string, principal: string = this.config.clientPrincipalId): Promise<object> {
+    const snapshot = await this.getRun(runId, principal)
+    return { runId, supported: this.interactions !== undefined, requests: snapshot.pendingInteractions ?? [] }
+  }
+
+  async respondToRunInteraction(runId: string, requestId: string, response: InteractionResponse, principal: string = this.config.clientPrincipalId): Promise<object> {
+    await this.getRun(runId, principal)
+    if (this.interactions === undefined) throw new InteractionError('INTERACTIONS_UNAVAILABLE', 'Update the embedded Harness Relay Host to enable native user interactions.')
+    const result = this.interactions.respond(runId, requestId, principal, response)
+    return { ...result, nextTool: 'wait_run' }
+  }
+
+  private projectInteractions(snapshot: RunSnapshot, principal: string): RunSnapshot {
+    const result = cloneRun(snapshot)
+    const requests = this.interactions?.list(snapshot.runId, principal) ?? []
+    const events = this.runs.get(snapshot.runId)?.events ?? []
+    for (const request of requests) {
+      if (request.kind !== 'approval' || request.callId === undefined) continue
+      const call = events.find(event => event.type === 'tool/call' && event.data.callId === request.callId)
+      if (call !== undefined) request.toolCall = structuredClone(call.data)
+    }
+    if (requests.length > 0) {
+      result.status = 'needs_attention'
+      result.attentionReason = requests.some(item => item.kind === 'approval') ? 'permission_confirm' : 'await_user_answer'
+      result.pendingInteractions = requests
+      result.error = null
+    }
+    return result
   }
 
   async openRun(runId: string): Promise<RunSnapshot> {
@@ -429,25 +477,25 @@ export class RelayFacade {
     return cloneRun(run.snapshot)
   }
 
-  async waitRun(runId: string, timeoutMs: number): Promise<RunSnapshot> {
+  async waitRun(runId: string, timeoutMs: number, clientPrincipalId: string = this.config.clientPrincipalId): Promise<RunSnapshot> {
     await this.ready
     const run = this.requireRun(runId)
     const deadline = Date.now() + timeoutMs
     do {
       await this.reconciler.refresh(run)
-      if (run.snapshot.status !== 'running' || Date.now() >= deadline) break
+      if (run.snapshot.status !== 'running' || (this.interactions?.list(runId, clientPrincipalId).length ?? 0) > 0 || Date.now() >= deadline) break
       await delay(Math.min(this.config.pollIntervalMs, Math.max(0, deadline - Date.now())))
     } while (Date.now() <= deadline)
     await this.persistState()
-    return cloneRun(run.snapshot)
+    return this.projectInteractions(run.snapshot, clientPrincipalId)
   }
 
-  async listRuns(serviceId?: string): Promise<RunSnapshot[]> {
+  async listRuns(serviceId?: string, clientPrincipalId: string = this.config.clientPrincipalId): Promise<RunSnapshot[]> {
     await this.ready
     const selected = [...this.runs.values()].filter(run => serviceId === undefined || run.snapshot.serviceId === serviceId)
     await Promise.all(selected.filter(run => run.snapshot.status === 'running').map(run => this.reconciler.refresh(run)))
     await this.persistState()
-    return selected.map(run => cloneRun(run.snapshot))
+    return selected.map(run => this.projectInteractions(run.snapshot, clientPrincipalId))
   }
   async getOperation(operationId: string): Promise<OperationRecord> {
     await this.ready

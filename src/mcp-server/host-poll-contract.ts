@@ -2,7 +2,7 @@ import type { RunStatus } from '../types.js'
 
 export const HOST_POLL_CONTRACT_SCHEMA_VERSION = 1 as const
 
-export type HostPollNextTool = 'wait_run' | 'consume_assistantText' | 'inspect_error' | 'get_run_summary'
+export type HostPollNextTool = 'wait_run' | 'consume_assistantText' | 'inspect_error' | 'get_run_summary' | 'list_run_interactions'
 
 export interface HostPollContract {
   readonly schemaVersion: typeof HOST_POLL_CONTRACT_SCHEMA_VERSION
@@ -39,11 +39,14 @@ export function hostPollContract(status: RunStatus): HostPollContract {
   }
 }
 
-export function withHostPollContract<T extends { readonly status: RunStatus }>(
+export function withHostPollContract<T extends { readonly status: RunStatus; readonly pendingInteractions?: readonly unknown[] }>(
   snapshot: T,
 ): T & { readonly hostPollContract: HostPollContract } {
   return {
     ...snapshot,
-    hostPollContract: hostPollContract(snapshot.status),
+    hostPollContract: {
+      ...hostPollContract(snapshot.status),
+      ...((snapshot.pendingInteractions?.length ?? 0) > 0 ? { nextTool: 'list_run_interactions' as const } : {}),
+    },
   }
 }

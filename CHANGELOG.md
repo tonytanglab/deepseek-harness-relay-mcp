@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.2.18（未发布）
+
+- 新增 `list_run_interactions` / `respond_to_run_interaction`，通过 Harness 原生 scoped answerer 接收 Relay 自有运行的单次审批、问答和计划确认；Cursor/Codex 可在同一任务内处理后继续等待，不再误用 `reply_run`。
+- 等待及摘要返回可操作的待确认状态；保留会话权限预设，只允许一次性批准，并校验 run、客户端 principal、live Agent、问题选项和票据生命周期。取消/卸载关闭请求，不持久化或重放授权票据；非 Relay 会话仍走原生界面。
+- 不覆盖 Windows UAC、原生 `never` 策略或 Harness 内部 owned child 的交互限制。需同时更新 Harness 内嵌 Host 与客户端代理；仅更新代理不能启用审批能力。
+
 ## 0.2.17
 
 ### 2026-09-14 14:19

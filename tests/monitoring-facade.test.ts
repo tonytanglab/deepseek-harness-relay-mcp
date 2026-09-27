@@ -77,8 +77,8 @@ test('uses the durable last progress timestamp for a live run summary', () => {
 test('maps every attention reason to an executable next action', () => {
   const facade = new MonitoringFacade()
   const expected = new Map<AttentionReason, string>([
-    [AttentionReason.AwaitUserAnswer, 'reply'],
-    [AttentionReason.PermissionConfirm, 'reply'],
+    [AttentionReason.AwaitUserAnswer, 'respond-interaction'],
+    [AttentionReason.PermissionConfirm, 'respond-interaction'],
     [AttentionReason.HostDisconnected, 'wait'],
     [AttentionReason.PermissionRestoreFailed, 'open-session'],
   ])

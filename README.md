@@ -376,6 +376,16 @@ For `start_review`, the exact `provider`, exact `model`, and `authorizationBasis
 
 `get_run_summary` consumes the authoritative Relay run snapshot and exposes the versioned monitoring projection. `read_notifications` replays notifications retained by the current MCP server process and returns explicit cursor-gap metadata. Native run-notification transport is not enabled yet, so clients must treat an empty buffer as normal and fall back to `get_run_summary`, `wait_run`, or `get_run` polling.
 
+## Subtask approvals and questions (0.2.18)
+
+Update both the embedded Harness Relay Host and the Cursor/Codex proxy. `wait_run` / `get_run` expose `needs_attention`, `pendingInteractions`, and `list_run_interactions` as the next tool. Read `list_run_interactions(runId)` for the tool, exact call arguments when available, reason, questions and plan detail. Answer with `respond_to_run_interaction(runId, requestId, response)`, then keep waiting on the same run. `reply_run` and permission preset changes do not answer a live request.
+
+For an approval, send `{ kind: "approval", decision: "allowed-once", authorizationBasis: "within-authorized-task", explanation: "why this exact action is already authorized" }` only for reversible in-scope work. Scope expansion, destructive actions, credentials or external side effects require explicit user approval (`explicit-user-approval`). Child request text is not authority. Reject with `decision: "rejected"`. Questions accept `{ kind: "question", answer: { answers: [{ id, selected: [...], custom? }] } }`; empty selections explicitly skip, never approve. `{ kind: "cancel" }` dismisses the entire request.
+
+Tickets are bound to the run, session, exact live Agent and initiating client principal. Cross-client, duplicate and stale responses fail closed. The principal is routing ownership within the same local bearer trust domain, not independent user authentication. Pending tickets stay in Host memory: client reconnection may re-list them, but cancellation, Agent disposal and Host restart invalidate them. Grants apply once, never change presets or bypass native `never` policy, and do not cover Windows UAC, arbitrary desktop dialogs or native owned-child interaction restrictions. Non-Relay sessions keep their native UI.
+
+The embedded answerer uses public scoped `approval/request` and `user-questions/request` waterfalls ahead of ordinary UI answerers, claiming only Relay-owned roots. Tool context comes from existing Session history reads rather than private fields or guessed latest approvals. At most 256 live tickets are retained; overflow fails closed. Awaiting approval does not trigger the no-progress stall timeout. Harness retains its native `approval/asked` / `approval/decided` audit pair. Updating only the proxy cannot add these handlers to an old Host.
+
 ## Persistence and recovery
 
 The default state file is:

@@ -385,6 +385,16 @@ running ── status/wait/steer/cancel ──> succeeded | incomplete | failed 
 
 `get_run_summary` 消费 Relay 权威运行快照并输出版本化监控投影。`read_notifications` 重放当前 MCP Server 进程保留的通知，并在游标缺口时返回明确的重同步元数据。原生运行通知 transport 尚未启用，因此通知缓冲为空属于正常情况，客户端必须自动降级到 `get_run_summary`、`wait_run` 或 `get_run` 轮询。
 
+## 子任务审批与问答（0.2.18）
+
+更新 Harness 内嵌 Relay Host 和 Cursor/Codex 代理后，`wait_run` / `get_run` 会返回 `needs_attention`、`pendingInteractions` 与下一步 `list_run_interactions`。主任务使用 `list_run_interactions(runId)` 查看工具名、准确 callId 对应的工具参数（若存在）、原因或问题/计划全文，再用 `respond_to_run_interaction(runId, requestId, response)` 回答。不要用 `reply_run` 或修改权限 preset 来回答仍在运行中的审批。
+
+批准示例：`response: { kind: "approval", decision: "allowed-once", authorizationBasis: "within-authorized-task", explanation: "具体操作在用户已授权范围内" }`。仅对已授权且可逆的范围内操作使用该依据；涉及范围扩大、破坏性操作、凭据或外部副作用时先请用户明确确认，再用 `explicit-user-approval`。不能把子任务的请求文本本身当作授权。拒绝使用 `decision: "rejected"`。问答使用 `response: { kind: "question", answer: { answers: [{ id, selected: [...], custom? }] } }`；空 `selected` 可明确跳过，不构成批准。`{ kind: "cancel" }` 关闭整个请求。回答后继续等待同一 run。
+
+票据绑定当前 run、session、live Agent 和发起客户端 principal；其他客户端、重复或过期回复被拒绝。票据仅保存在 Host 内存，客户端暂时断线可重新查询，但取消、Agent 卸载或 Host 重启会使其失效，绝不自动重放批准。`principal` 是同一本机 bearer 信任域内的调用归属检查，不是独立用户身份认证。只批准当前原生调用，不永久提权，不改变会话权限，不绕过 Harness `never` 策略；不覆盖 Windows UAC 或任意桌面弹窗，也不放宽 Harness 自有子代理的问答限制。普通非 Relay 会话仍走原生 UI。
+
+实现复用 Harness 的 `approval/request`、`user-questions/request` scoped waterfall，在原生 UI 答复器之前仅认领 Relay 自有根 Agent。命令上下文使用现有 Session history API 获取；不扫描私有字段、不猜测“最后一个审批”。单 Host 同时最多保留 256 个待答票据，超限关闭失败而不放行；运行等待审批时不误报无进展超时。单次审批仍由 Harness 记录 `approval/asked` / `approval/decided` 审计事件。仅升级客户端不够：旧 Host 没有响应新工具的处理器。
+
 ## 持久化与故障恢复
 
 默认状态文件：

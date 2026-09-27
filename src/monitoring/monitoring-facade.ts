@@ -107,6 +107,7 @@ function actionForAttention(attention?: RunAttention): NextAction {
       return 'wait'
     case AttentionReason.AwaitUserAnswer:
     case AttentionReason.PermissionConfirm:
+      return 'respond-interaction'
     default:
       return 'reply'
   }

@@ -48,6 +48,7 @@ test('Cordis plugin factory exposes native injects and disposes infrastructure w
 
   assert.equal(plugin.name, 'harness-relay-mcp')
   assert.deepEqual(plugin.inject, [
+    'agents',
     'typertGateway',
     'webServer',
     'sessions',
@@ -126,7 +127,7 @@ test('headless profile preflight blocks before profile mutation', () => {
   assert.deepEqual(preflightHarnessProfile({
     profile: 'web',
     availableServices: [
-      'typertGateway', 'sessions', 'sessionController', 'workspaceController',
+      'agents', 'typertGateway', 'sessions', 'sessionController', 'workspaceController',
       'settingsController', 'agentPresets', 'permissionPresets',
     ],
   }), {
@@ -138,7 +139,7 @@ test('headless profile preflight blocks before profile mutation', () => {
   assert.equal(preflightHarnessProfile({
     profile: 'web',
     availableServices: [
-      'typertGateway', 'webServer', 'sessions', 'sessionController', 'workspaceController',
+      'agents', 'typertGateway', 'webServer', 'sessions', 'sessionController', 'workspaceController',
       'settingsController', 'agentPresets', 'permissionPresets',
     ],
   }).ready, true)

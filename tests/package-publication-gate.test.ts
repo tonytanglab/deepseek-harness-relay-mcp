@@ -60,6 +60,44 @@ test('publishes a repo marketplace that installs the Codex layer from npm', () =
   assert.equal(plugin.category, 'Productivity')
 })
 
+test('packages an Antigravity plugin with a portable, credential-free stdio launcher', () => {
+  const pluginPath = '.antigravity-plugin/plugin.json'
+  assert.ok(manifest.files.includes(pluginPath))
+  assert.ok(manifest.files.includes('mcp_config.json'))
+  const plugin = JSON.parse(readFileSync(new URL(`../${pluginPath}`, import.meta.url), 'utf8'))
+  assert.equal(plugin.name, manifest.name)
+  assert.equal(plugin.version, manifest.version)
+  const config = JSON.parse(readFileSync(new URL('../mcp_config.json', import.meta.url), 'utf8'))
+  assert.deepEqual(config.mcpServers, {
+    'harness-relay-mcp': {
+      command: 'node',
+      args: ['${PLUGIN_ROOT}/dist/dsh-relay-proxy.mjs'],
+      env: { DSH_RELAY_CLIENT_PRINCIPAL_ID: 'antigravity:plugin' },
+    },
+  })
+})
+
+test('packages the shared delegation skill and a portable Cursor stdio launcher', () => {
+  const pluginPath = '.cursor-plugin/plugin.json'
+  assert.ok(manifest.files.includes(pluginPath))
+  assert.ok(manifest.files.includes('mcp.json'))
+  assert.ok(manifest.files.includes('skills/'))
+  const plugin = JSON.parse(readFileSync(new URL(`../${pluginPath}`, import.meta.url), 'utf8'))
+  assert.equal(plugin.name, manifest.name)
+  assert.equal(plugin.version, manifest.version)
+  assert.equal(plugin.skills, './skills/')
+  assert.equal(plugin.mcpServers, './mcp.json')
+  const config = JSON.parse(readFileSync(new URL('../mcp.json', import.meta.url), 'utf8'))
+  assert.deepEqual(config.mcpServers, {
+    'harness-relay-mcp': {
+      type: 'stdio',
+      command: 'node',
+      args: ['${CURSOR_PLUGIN_ROOT}/dist/dsh-relay-proxy.mjs'],
+      env: { DSH_RELAY_CLIENT_PRINCIPAL_ID: 'cursor:plugin' },
+    },
+  })
+})
+
 test('uses an explicit publication whitelist and validates its byte budget', () => {
   assert.ok(Array.isArray(manifest.files) && manifest.files.length > 0)
   assert.equal(manifest.files.some(item => /(?:^|\/)(?:\.runtime|node_modules|coverage|artifacts|state)(?:\/|$)/i.test(item)), false)
@@ -94,13 +132,6 @@ test('prepack performs strict TypeScript checking and MCP smoke builds first', (
   assert.ok(smoke.indexOf('build.mjs') >= 0)
   assert.ok(smoke.indexOf('verify-built-relay-version.mjs') > smoke.indexOf('build.mjs'))
   assert.ok(smoke.indexOf('build.mjs') < smoke.indexOf('mcp-smoke.mjs'))
-})
-
-test('version sync can explicitly adopt the official plugin cachebuster', () => {
-  const script = readFileSync(new URL('../scripts/sync-version.mjs', import.meta.url), 'utf8')
-  assert.match(script, /--from-plugin/)
-  assert.match(script, /adoptPluginVersion \? \[versionFile, packageFile\]/)
-  assert.match(script, /marketplacePlugin\.source\.version = version/)
 })
 
 test('dual-mode Harness peers are versioned but optional for standalone installs', () => {

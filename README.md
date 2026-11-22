@@ -61,14 +61,14 @@ As of 2026-08-20, the official [`dsh` launcher source](https://github.com/deepse
 - Ordered text and inline image prompts with bounded base64 validation.
 - Persistent run identities and recovery after the MCP server restarts.
 - Stable Harness Web session links, with explicit visible-page verification in the bundled Skill.
-- Compatible with Codex, Claude Code, OpenCode, Cursor, and other standards-compliant MCP clients.
+- Compatible with Codex, Claude Code, OpenCode, Cursor, Google Antigravity, and other standards-compliant MCP clients.
 - The internal bundle uses Harness 0.1.2's direct Typert Gateway and native permission service; external agents connect through authenticated HTTP or the stateless stdio proxy.
 - The standalone `dsh-relay` mode remains available for older Harness versions and explicit rollback.
 
 ## Requirements
 
 - Node.js `^22.19` or `>=24`.
-- Relay 0.2.19 internal mode requires DeepSeek Harness `>=0.2.1-alpha.5 <0.3.0`, the `web` profile, and a `127.0.0.1` bind. It uses the public connection-owned Peer API required by the newer Typert gateway. Update both the embedded bundle and the client proxy, then restart the Host; older Relay versions omit the required Peer.
+- Internal mode requires the Harness `web` profile and a `127.0.0.1` bind. Relay 0.2.20 is verified on Harness `0.2.2-rc.5` (npm `latest`) and retains the `0.2.1-alpha.5` compatibility declaration. The `0.2.3-alpha.1` preview's npm distribution has missing Cordis exports. Relay passed compatibility checks with Cordis built from the matching Harness source tag. Both newer Harness releases require Node.js `>=24.9.0`. Restart the Harness Web Host after updating the internal bundle and client proxy.
 - Standalone compatibility mode requires a running DeepSeek Harness Web Host on loopback HTTP.
 - The target workspace must already be registered by Harness or be inside an explicitly configured allowed root.
 
@@ -79,6 +79,8 @@ http://127.0.0.1:3080/
 ```
 
 ## Installation
+
+On a new computer, start the local Harness `web` profile before installing your client. Codex, Cursor, and Antigravity share the same Relay version and delegation Skill. Keep the extracted `package/` directory intact when installing from a `.tgz`, including `dist/`, `skills/`, and the client manifests. Desktop clients need `node` on their `PATH`.
 
 ### Install as a Harness bundle (recommended)
 
@@ -117,6 +119,26 @@ The first command registers this project's GitHub marketplace. The second fetche
 If an update leaves native tools missing and Codex reports `connection closed: initialize response`, check whether the cache directory referenced by the task still contains `dist/dsh-relay-proxy.mjs`. A newer cache directory alone does not prove that the running host uses it. Reinstall from the confirmed marketplace with the Codex CLI used by the desktop app; after saving active work, restart the app if a new task still references the removed cache. Verify native `doctor` and the tool catalog before declaring recovery. Do not substitute a temporary Relay client.
 
 When a personal Marketplace points at a local source checkout, the Codex installer copies the files that already exist; it does not run the TypeScript/esbuild build. After every source pull, run `pnpm run prepare:codex-local` in that checkout before generating a cachebuster and running `codex plugin add`. The command builds and verifies all three `dist` entry points, their embedded version, and the proxy's stable full tool catalog. Skipping it can produce a false upgrade where the manifest and install record are new but the MCP process still executes an old bundle. Prefer the repository Marketplace/npm path above for normal installations.
+
+To install a `.tgz` that is not yet available on npm, extract it to a permanent directory and create `.agents/plugins/marketplace.json` next to its `package/` directory.
+
+```json
+{
+  "name": "harness-relay-local",
+  "plugins": [{
+    "name": "deepseek-harness-relay",
+    "source": { "source": "local", "path": "./package" },
+    "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" }
+  }]
+}
+```
+
+Point the command below at the directory containing `.agents/` and `package/`. When updating a local rebuild of the same source version, append a new `+codex.YYYYMMDDhhmmss` cachebuster to the version in the staged `.codex-plugin/plugin.json`.
+
+```powershell
+codex plugin marketplace add <extraction-directory>
+codex plugin add deepseek-harness-relay@harness-relay-local
+```
 
 #### Codex built-in MCP generation contract
 
@@ -206,6 +228,41 @@ After the internal bundle starts, point MCP clients at the universal stdio proxy
 The proxy defaults to `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json`; when `DSH_HOME` is unset it consistently falls back to `.dsh` under the user home, and a blank `DSH_PROFILE` falls back to `web`. Set `DSH_RELAY_ENDPOINT_DESCRIPTOR` when using a custom state directory. Client configuration never stores the token. The `harness-relay-mcp` package root is the Harness bundle and ships `harness-relay-mcp` plus `harness-relay-mcp-proxy`; the old `dsh-relay` commands remain compatibility aliases.
 
 Starting with 0.2.3, the internal bundle atomically publishes a credential-free `relay-status.json` beside the endpoint descriptor. The stdio proxy starts its local MCP surface first. `tools/list` and the local `doctor` never wait for remote connection or Harness auto-start. The proxy generates the complete product tool catalog from the same registrations as the embedded Relay, so Codex discovers `list_capabilities`, `start_review`, `wait_run`, and the other native tools even while recovery is pending. If the endpoint is missing, startup failed, owner epochs disagree, the token is unreadable, or POST returns 401/404/405/503, calls other than `doctor` return `RELAY_ROUTE_UNAVAILABLE` until the route recovers. The same proxy reconnects after Host recovery and emits `tools/list_changed` so clients can refresh any remote metadata changes.
+
+### Install the Cursor plugin
+
+Copy the `.tgz`'s extracted `package/` directory to `~/.cursor/plugins/local/harness-relay-mcp/`, including hidden directories such as `.cursor-plugin/`. Run **Developer: Reload Window** and check **Customize** for both the Relay MCP and the `delegate-to-deepseek-harness` Skill. On managed installations, use an approved distribution method if policy disables local plugin imports. [Cursor plugin documentation](https://cursor.com/docs/plugins#test-plugins-locally)
+
+For manual MCP setup, run `setup_plan` with `client: cursor` and use `~/.cursor/mcp.json` or the project's `.cursor/mcp.json`. Copy `skills/delegate-to-deepseek-harness/` into the client's Skill directory alongside a manual MCP configuration. Keep one Relay entry per client and finish runs that belong to the old client principal before migrating. [Cursor MCP documentation](https://cursor.com/docs/mcp)
+
+### Connect Google Antigravity
+
+The Relay tarball includes an Antigravity manifest, MCP configuration, and delegation skill. Extract it and run `agy plugin install <extracted-package-directory>` against the directory containing `dist/`. For a source checkout, generate and verify `dist/` with `pnpm run prepare:codex-local`, then run `agy plugin install .`. Antigravity loads `harness-relay-mcp_harness-relay-mcp` and the `delegate-to-deepseek-harness` skill. [Antigravity plugin documentation](https://antigravity.google/docs/build-plugins/)
+
+For direct MCP setup, call `setup_plan` with `client: antigravity`. Use `~/.gemini/config/mcp_config.json` for the user profile or `<workspace>/.agents/mcp_config.json` for one workspace. Merge the generated `mcpServers.harness-relay-mcp` entry into the existing file. Use one setup method to keep one tool catalog and client identity. [Antigravity MCP documentation](https://antigravity.google/docs/mcp)
+
+For example, on Windows, use the absolute paths to Node.js, the installed Relay stdio proxy, and the endpoint descriptor published by your Harness Host.
+
+```json
+{
+  "mcpServers": {
+    "harness-relay-mcp": {
+      "command": "C:/Program Files/nodejs/node.exe",
+      "args": ["C:/Users/you/.dsh/profiles/web/node_modules/harness-relay-mcp/dist/dsh-relay-proxy.mjs"],
+      "env": {
+        "DSH_RELAY_CLIENT_PRINCIPAL_ID": "antigravity:user",
+        "DSH_RELAY_ENDPOINT_DESCRIPTOR": "C:/Users/you/.dsh/plugins/dsh-relay/web/relay-endpoint.json"
+      }
+    }
+  }
+}
+```
+
+Reload the server from Antigravity's MCP manager. The local proxy reads the Bearer token from its protected file.
+
+### Verify the client installation
+
+Open a fresh conversation and find `doctor`, `list_capabilities`, `start_review`, and `wait_run`. Confirm `doctor.relayVersion` matches the installed version and `remote.connected` is `true`, then run `list_capabilities` and `list_workspaces`. Select the exact discovered `provider`, `model`, and registered workspace. In a read-only `start_review` test, use the same authorized, non-sensitive file path in `reviewTargets` and `contextReadScope` and ask for a short marker. Use `wait_run` to check the terminal status and model reply. Clients may prepend a plugin or MCP server name to the tool name.
 
 ## Quick start
 
@@ -370,7 +427,7 @@ For `start_review`, the exact `provider`, exact `model`, and `authorizationBasis
 
 ## Client setup and monitoring projection
 
-`setup_plan` supports Codex, Claude Code, Cursor, and the explicitly versioned OpenCode V2 layout. It accepts already-resolved absolute Node and Relay entry paths and returns only a structured minimal patch; it never edits a client configuration. The launcher platform must match the configuration platform, and package-manager shims such as `pnpm.exe` or `pnpm.cmd` are rejected as Node runtimes.
+`setup_plan` supports Codex, Claude Code, Cursor, Google Antigravity, and the explicitly versioned OpenCode V2 layout. It accepts already-resolved absolute Node and Relay entry paths and returns only a structured minimal patch; it never edits a client configuration. The launcher platform must match the configuration platform, and package-manager shims such as `pnpm.exe` or `pnpm.cmd` are rejected as Node runtimes.
 
 `setup_doctor` is also side-effect free. Filesystem, Broker, Host, workspace, model, and permission facts must be supplied by an authorized caller; omitted probes are reported as `skipped` instead of being guessed.
 

@@ -12,31 +12,31 @@ importers:
         specifier: ^4.0.2
         version: 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.7)(@deepseek-ai/cordis-plugin-loader@1.0.3)
       '@deepseek-ai/dsh-agent-preset-registry':
-        specifier: '>=0.2.1-alpha.5 <0.3.0'
+        specifier: '>=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1'
         version: 0.2.1-alpha.5(a1ad1c931f1744275e83c8db4ea631dc)
       '@deepseek-ai/dsh-api-gateway':
-        specifier: '>=0.2.1-alpha.5 <0.3.0'
+        specifier: '>=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1'
         version: 0.2.1-alpha.5(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/dsh-api-session-controller':
-        specifier: '>=0.2.1-alpha.5 <0.3.0'
+        specifier: '>=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1'
         version: 0.2.1-alpha.5(eb60f133ed8d9f143a5bdb56f2166500)
       '@deepseek-ai/dsh-api-settings-controller':
-        specifier: '>=0.2.1-alpha.5 <0.3.0'
+        specifier: '>=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1'
         version: 0.2.1-alpha.5(eaa25931bce5857bf0d90996c08b6bb0)
       '@deepseek-ai/dsh-api-workspace-controller':
-        specifier: '>=0.2.1-alpha.5 <0.3.0'
+        specifier: '>=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1'
         version: 0.2.1-alpha.5(49c2fe9d4f7e063e2a490fb254be53f5)
       '@deepseek-ai/dsh-client-connection':
-        specifier: '>=0.2.1-alpha.5 <0.3.0'
+        specifier: '>=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1'
         version: 0.2.1-alpha.5(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.2.1-alpha.5(@deepseek-ai/cordis@4.0.2))
       '@deepseek-ai/dsh-host-webserver':
-        specifier: '>=0.2.1-alpha.5 <0.3.0'
+        specifier: '>=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1'
         version: 0.2.1-alpha.5(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/dsh-permission-presets':
-        specifier: '>=0.2.1-alpha.5 <0.3.0'
+        specifier: '>=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1'
         version: 0.2.1-alpha.5(94ee578069707244e01ee59e06ae97be)
       '@deepseek-ai/dsh-session':
-        specifier: '>=0.2.1-alpha.5 <0.3.0'
+        specifier: '>=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1'
         version: 0.2.1-alpha.5(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.2.1-alpha.5(@deepseek-ai/cordis@4.0.2))
       '@deepseek-ai/schemastery':
         specifier: ^3.18.2

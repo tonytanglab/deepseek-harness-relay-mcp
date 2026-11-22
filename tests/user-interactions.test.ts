@@ -92,6 +92,21 @@ test('Agent context disposal closes requests even without a signal or subsequent
   assert.equal(cleanup.size, 0)
 })
 
+test('Harness registries without roots use live Session origin and reject unknown or child scopes', () => {
+  const { agent } = fixture()
+  const owner = { runId: 'run-1', sessionId: agent.session.id, clientPrincipalId: 'antigravity:user' }
+  const root = { ...agent, session: { ...agent.session, header: {} } }
+  const child = { ...agent, session: { ...agent.session, header: { origin: 'subagent' } } }
+  const contextFor = (live: InteractionAgent): NativeInteractionContext => ({
+    get: () => ({ get: () => live }),
+    on: () => () => {},
+  })
+  assert.equal(nativeInteractionOwner(contextFor(root), root, () => owner), owner)
+  assert.equal(nativeInteractionOwner(contextFor(root), { ...root }, () => owner), undefined)
+  assert.equal(nativeInteractionOwner(contextFor(child), child, () => owner), undefined)
+  assert.equal(nativeInteractionOwner(contextFor(agent), agent, () => owner), undefined)
+})
+
 test('explicit Skip is not approval; explicit cancellation preserves native cancellation taxonomy', async () => {
   const { agent, facade, request } = fixture()
   const pending = facade.question({ agent, questions: [{ id:'q', question:'Choose?', options:[{label:'Yes'}] }] }, async () => ({answers:[]}))

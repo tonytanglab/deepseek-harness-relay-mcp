@@ -11,7 +11,7 @@ test('delegation skill forbids visible shell and temporary client fallbacks', ()
   assert.match(skill, /only through the native MCP tools/iu)
   assert.match(skill, /\.tmp\/harness-\*-call\.mjs/iu)
   assert.match(skill, /never use `node`, PowerShell, Python, a terminal, or another shell client/iu)
-  assert.match(skill, /continue from a new Codex task/iu)
+  assert.match(skill, /reload the MCP server, and retry in a fresh conversation/iu)
 })
 
 test('delegation skill keeps Harness browser opening opt-in', () => {

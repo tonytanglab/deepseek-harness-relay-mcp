@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "harness-relay-mcp": {
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/dist/dsh-relay-proxy.mjs"],
+      "env": {
+        "DSH_RELAY_CLIENT_PRINCIPAL_ID": "antigravity:plugin"
+      }
+    }
+  }
+}

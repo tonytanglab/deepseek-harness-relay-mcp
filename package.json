@@ -1,6 +1,6 @@
 {
   "name": "harness-relay-mcp",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "description": "Delegate and monitor DeepSeek Harness work from any MCP agent.",
   "author": "TonyTangLab",
   "repository": {
@@ -43,8 +43,12 @@
     "dsh-relay-proxy": "./dist/dsh-relay-proxy.mjs"
   },
   "files": [
+    ".antigravity-plugin/plugin.json",
     ".codex-plugin/plugin.json",
+    ".cursor-plugin/plugin.json",
     ".mcp.json",
+    "mcp.json",
+    "mcp_config.json",
     "dist/dsh-relay.mjs",
     "dist/dsh-relay.mjs.map",
     "dist/dsh-relay-proxy.mjs",
@@ -83,16 +87,16 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-client-connection": ">=0.2.1-alpha.5 <0.3.0",
+    "@deepseek-ai/dsh-client-connection": ">=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1",
     "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-agent-preset-registry": ">=0.2.1-alpha.5 <0.3.0",
-    "@deepseek-ai/dsh-api-gateway": ">=0.2.1-alpha.5 <0.3.0",
-    "@deepseek-ai/dsh-api-session-controller": ">=0.2.1-alpha.5 <0.3.0",
-    "@deepseek-ai/dsh-api-settings-controller": ">=0.2.1-alpha.5 <0.3.0",
-    "@deepseek-ai/dsh-api-workspace-controller": ">=0.2.1-alpha.5 <0.3.0",
-    "@deepseek-ai/dsh-host-webserver": ">=0.2.1-alpha.5 <0.3.0",
-    "@deepseek-ai/dsh-permission-presets": ">=0.2.1-alpha.5 <0.3.0",
-    "@deepseek-ai/dsh-session": ">=0.2.1-alpha.5 <0.3.0",
+    "@deepseek-ai/dsh-agent-preset-registry": ">=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1",
+    "@deepseek-ai/dsh-api-gateway": ">=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1",
+    "@deepseek-ai/dsh-api-session-controller": ">=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1",
+    "@deepseek-ai/dsh-api-settings-controller": ">=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1",
+    "@deepseek-ai/dsh-api-workspace-controller": ">=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1",
+    "@deepseek-ai/dsh-host-webserver": ">=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1",
+    "@deepseek-ai/dsh-permission-presets": ">=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1",
+    "@deepseek-ai/dsh-session": ">=0.2.1-alpha.5 <0.3.0 || 0.2.2-rc.5 || 0.2.3-alpha.1",
     "@deepseek-ai/schemastery": "^3.18.2"
   },
   "peerDependenciesMeta": {

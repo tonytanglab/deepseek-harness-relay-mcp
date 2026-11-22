@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.2.20
+
+### 2026-11-22
+
+- 打包 Google Antigravity 原生插件清单、MCP 和委派 Skill。也支持生成用户级或工作区级 MCP 配置，统一走同一个本地 stdio proxy。
+- 在同一安装包内提供 Cursor 原生插件。Codex、Cursor 和 Antigravity 共用委派 Skill 和 stdio proxy，并用运行时版本、模型目录和只读任务验收安装。
+- 适配 Harness 0.2.2-rc.5 和 0.2.3-alpha.1 的 Web 路由认证。Relay 路由继续验证回环来源和自身 Bearer token，避免新版 Host 先用浏览器认证拒绝 MCP 握手。
+- 适配新版 Agent Registry 移除 `roots()` 的变更。通过精确的 live Agent 和原生会话来源判断审批归属，保留旧版根 Agent 检查，原生子代理的审批仍由 Harness 处理。
+
 ## 0.2.19
 
 ### 2026-10-18

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "harness-relay-mcp",
+  "displayName": "Harness Relay",
+  "version": "0.2.20",
+  "description": "Delegate and monitor DeepSeek Harness reviews and workspace tasks from Antigravity through the authenticated local Relay.",
+  "author": "TonyTangLab",
+  "repository": "https://github.com/tonytanglab/deepseek-harness-relay-mcp",
+  "license": "MIT",
+  "suggestedPrompts": [
+    "Check Harness Relay with doctor and list the configured models."
+  ]
+}

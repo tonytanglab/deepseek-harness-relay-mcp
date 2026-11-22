@@ -15,14 +15,21 @@ const load = (resolver, name) => import(pathToFileURL(resolver.resolve(name)).hr
 const { Context } = await load(approvalRequire, '@deepseek-ai/cordis')
 const { default: ApprovalService, setApprovalPolicy } = await load(approvalRequire, '@deepseek-ai/dsh-user-approval')
 const { default: UserQuestionService } = await load(questionsRequire, '@deepseek-ai/dsh-user-questions')
-const { Session, SessionId } = await load(approvalRequire, '@deepseek-ai/dsh-session')
+const { default: SessionStore } = await load(approvalRequire, '@deepseek-ai/dsh-session')
+const { default: SessionProjectionRegistry } = await load(approvalRequire, '@deepseek-ai/dsh-session-projection')
 const { default: AgentRegistry } = await load(approvalRequire, '@deepseek-ai/dsh-agent')
 const { createScope } = await load(approvalRequire, '@deepseek-ai/dsh-scope')
 
 async function fixture() {
   const ctx = new Context()
-  const fibers = [await ctx.plugin(AgentRegistry), await ctx.plugin(ApprovalService), await ctx.plugin(UserQuestionService)]
-  const session = Session.create(SessionId('native-interaction-test'))
+  const fibers = [
+    await ctx.plugin(SessionStore),
+    await ctx.plugin(SessionProjectionRegistry),
+    await ctx.plugin(AgentRegistry),
+    await ctx.plugin(ApprovalService),
+    await ctx.plugin(UserQuestionService),
+  ]
+  const session = ctx.sessions.create()
   session.append('turn/start', { turn: 0 })
   // Only the Agent driver is a stub: no loop, provider, tools, filesystem or LLM.
   const agent = { id: session.id, session }

@@ -1,7 +1,7 @@
 /** Native scoped answerer payloads. Objects stay borrowed; only display data crosses MCP. */
 export interface InteractionAgent {
   readonly id: string
-  readonly session: { readonly id: string }
+  readonly session: { readonly id: string; readonly header?: { readonly origin?: string } }
   readonly ctx: { effect(install: () => () => void, label?: string): () => void | Promise<void> }
 }
 

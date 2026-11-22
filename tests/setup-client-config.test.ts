@@ -5,13 +5,14 @@ import type { ClientName, ClientScope, SetupRequest } from '../src/setup/index.j
 
 const facade = new ClientSetupFacade()
 
-test('declares the verified scope matrix for all four clients', () => {
+test('declares the verified scope matrix for all five clients', () => {
   const support = Object.fromEntries(facade.getScopeSupport().map(item => [item.client, item.supportedScopes]))
   assert.deepEqual(support, {
     codex: ['user'],
     claude: ['local', 'project', 'user'],
     cursor: ['project', 'user'],
     opencode: ['project', 'user'],
+    antigravity: ['project', 'user'],
   })
 })
 
@@ -21,6 +22,7 @@ test('rejects unsupported scopes before rendering a patch', () => {
     ['codex', 'project'],
     ['cursor', 'local'],
     ['opencode', 'local'],
+    ['antigravity', 'local'],
   ] as const) {
     const plan = facade.plan(request(client, scope))
     assert.equal(plan.ready, false)
@@ -74,6 +76,27 @@ test('renders OpenCode V2 mcp.servers with command array and environment', () =>
   assert.deepEqual(server?.environment, { DSH_RELAY_HOST_URL: 'http://127.0.0.1:3080/' })
   assert.equal(server?.env, undefined)
   assert.equal(plan.patch?.target.dialect, 'opencode-v2')
+})
+
+test('renders Antigravity user and workspace config with a local stdio proxy', () => {
+  const input = request('antigravity', 'user')
+  const relayEntry = 'C:\\Program Files\\DSH Relay\\dist\\dsh-relay-proxy.mjs'
+  const environment = {
+    DSH_RELAY_CLIENT_PRINCIPAL_ID: 'antigravity:user',
+    DSH_RELAY_ENDPOINT_DESCRIPTOR: 'C:\\Users\\Ada\\.dsh\\plugins\\dsh-relay\\web\\relay-endpoint.json',
+  }
+  const launcher = { ...input.launcher, relayEntry, environment }
+  const user = facade.plan({ ...input, launcher })
+  const workspace = facade.plan({ ...input, scope: 'project', launcher })
+  assert.equal(user.ready, true)
+  assert.equal(user.writeAuthorized, false)
+  assert.equal(user.patch?.target.path, 'C:\\Users\\Ada\\.gemini\\config\\mcp_config.json')
+  assert.equal(workspace.patch?.target.path, 'D:\\work\\demo\\.agents\\mcp_config.json')
+  assert.deepEqual(JSON.parse(user.patch?.snippet ?? '{}'), {
+    mcpServers: {
+      'harness-relay-mcp': { command: input.launcher.nodeExecutable, args: [relayEntry], env: environment },
+    },
+  })
 })
 
 test('detect reports an existing relay entry without mutating the snapshot', () => {

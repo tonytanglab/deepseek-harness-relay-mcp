@@ -1,0 +1,12 @@
+{
+  "name": "harness-relay-mcp",
+  "version": "0.2.20",
+  "description": "Delegate and monitor DeepSeek Harness tasks through the local Relay.",
+  "author": {
+    "name": "TonyTangLab"
+  },
+  "repository": "https://github.com/tonytanglab/deepseek-harness-relay-mcp",
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": "./mcp.json"
+}

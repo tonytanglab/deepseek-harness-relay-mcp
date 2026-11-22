@@ -8,7 +8,7 @@ import { HostRpcError } from '../host-client.js'
 import { AttentionReason, MonitoringError, MonitoringFacade } from '../monitoring/index.js'
 import { MCP_SERVER_ID, PRODUCT_DISPLAY_NAME } from '../product-identity/index.js'
 import { RelayError, type RelayFacade } from '../relay-broker/index.js'
-import { ClientSetupFacade } from '../setup/index.js'
+import { CLIENT_NAMES, ClientSetupFacade } from '../setup/index.js'
 import type { DoctorFacts, SetupRequest } from '../setup/index.js'
 import { withHostPollContract } from './host-poll-contract.js'
 import { InteractionError, type InteractionResponse } from '../user-interactions/index.js'
@@ -35,7 +35,7 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
 
   server.registerTool('setup_plan', {
     title: `Plan ${PRODUCT_DISPLAY_NAME} client setup`,
-    description: 'Generate a validated, no-write MCP configuration patch for Codex, Claude Code, Cursor, or OpenCode V2.',
+    description: 'Generate a validated, no-write MCP configuration patch for Codex, Claude Code, Cursor, OpenCode V2, or Google Antigravity.',
     inputSchema: setupInputSchema,
     outputSchema: setupPlanOutputSchema,
     annotations: readOnly,
@@ -367,7 +367,7 @@ function taskScopeInput(input: {
 }
 
 const setupInputSchema = {
-  client: z.enum(['codex', 'claude', 'cursor', 'opencode']),
+  client: z.enum(CLIENT_NAMES),
   scope: z.enum(['local', 'project', 'user']),
   platform: z.enum(['win32', 'darwin', 'linux']),
   homeDirectory: z.string().min(1),
@@ -414,7 +414,7 @@ const setupPlanOutputSchema = {
 
 const setupDoctorOutputSchema = {
   schemaVersion: z.literal(1),
-  client: z.enum(['codex', 'claude', 'cursor', 'opencode']),
+  client: z.enum(CLIENT_NAMES),
   scope: z.enum(['local', 'project', 'user']),
   status: z.enum(['healthy', 'degraded', 'blocked']),
   planReady: z.boolean(),

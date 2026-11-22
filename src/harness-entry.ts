@@ -78,6 +78,7 @@ interface NativeWebServer {
   register(route: {
     kind: 'exact'
     path: string
+    auth: 'anonymous'
     handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>
   }): () => void
 }
@@ -193,7 +194,7 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
         })
         eventHandle = eventMonitoring.start()
       }
-      http = new McpHttpFacade({
+      const relayHttp = new McpHttpFacade({
         token: loadedToken.token,
         allowedHosts: [`127.0.0.1:${ctx.webServer.port}`, `localhost:${ctx.webServer.port}`],
         allowedOrigins: [hostWebUrl.slice(0, -1), `http://localhost:${ctx.webServer.port}`],
@@ -202,10 +203,13 @@ const plugin = createHarnessPlugin<NativeHarnessContext>({
         requestsPerMinute: config.rateLimitPerMinute,
         drainTimeoutMs: config.drainTimeoutMs,
       }, principal => createServer(relay, relayConfig, monitoring, principal))
+      http = relayHttp
       unregister = ctx.webServer.register({
         kind: 'exact',
         path: config.route,
-        handler: (req, res) => http?.handle(req, res) ?? Promise.resolve(),
+        // Connection still checks Host/Origin. Relay authenticates this route with its own Bearer token.
+        auth: 'anonymous',
+        handler: (req, res) => relayHttp.handle(req, res),
       })
       await new RelayEndpointPublisher(paths.endpointDescriptorFile).publish({
         authorityId,

@@ -189,10 +189,14 @@ test('concurrent lock holders serialize promotion without losing the final tree'
 test('syncVersions rewrites only changed targets and is idempotent', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-sync-version-'))
   await mkdir(join(root, '.codex-plugin'), { recursive: true })
+  await mkdir(join(root, '.antigravity-plugin'), { recursive: true })
+  await mkdir(join(root, '.cursor-plugin'), { recursive: true })
   await mkdir(join(root, '.agents', 'plugins'), { recursive: true })
   await writeFile(join(root, 'version.json'), `${JSON.stringify({ version: '0.2.3' }, null, 2)}\n`, 'utf8')
   await writeFile(join(root, 'package.json'), `${JSON.stringify({ name: 'demo', version: '0.2.2' }, null, 2)}\n`, 'utf8')
   await writeFile(join(root, '.codex-plugin', 'plugin.json'), `${JSON.stringify({ name: 'demo', version: '0.2.2' }, null, 2)}\n`, 'utf8')
+  await writeFile(join(root, '.antigravity-plugin', 'plugin.json'), `${JSON.stringify({ name: 'demo', version: '0.2.2' }, null, 2)}\n`, 'utf8')
+  await writeFile(join(root, '.cursor-plugin', 'plugin.json'), `${JSON.stringify({ name: 'demo', version: '0.2.2' }, null, 2)}\n`, 'utf8')
   await writeFile(join(root, '.agents', 'plugins', 'marketplace.json'), `${JSON.stringify({
     plugins: [{ name: 'deepseek-harness-relay', source: { source: 'npm', package: 'harness-relay-mcp', version: '0.2.2' } }],
   }, null, 2)}\n`, 'utf8')
@@ -202,6 +206,8 @@ test('syncVersions rewrites only changed targets and is idempotent', async () =>
   assert.deepEqual(first.changed, [
     join(root, 'package.json'),
     join(root, '.codex-plugin', 'plugin.json'),
+    join(root, '.antigravity-plugin', 'plugin.json'),
+    join(root, '.cursor-plugin', 'plugin.json'),
     join(root, '.agents', 'plugins', 'marketplace.json'),
   ])
   assert.equal((JSON.parse(await readFile(packageAfterFirst, 'utf8')) as { version: string }).version, '0.2.3')
@@ -214,6 +220,16 @@ test('syncVersions rewrites only changed targets and is idempotent', async () =>
 
   const check = await syncVersions(root, { checkOnly: true })
   assert.deepEqual(check.changed, [])
+
+  const cachebuster = '0.2.3+codex.20261122050000'
+  const codexPluginPath = join(root, '.codex-plugin', 'plugin.json')
+  await writeFile(codexPluginPath, `${JSON.stringify({ name: 'demo', version: cachebuster })}\n`, 'utf8')
+  const adopted = await syncVersions(root, { adoptPluginVersion: true })
+  assert.deepEqual(adopted.changed, [
+    join(root, 'version.json'),
+    ...first.changed.filter((file: string) => file !== codexPluginPath),
+  ])
+  assert.deepEqual((await syncVersions(root, { checkOnly: true })).changed, [])
   await rm(root, { recursive: true, force: true })
 })
 

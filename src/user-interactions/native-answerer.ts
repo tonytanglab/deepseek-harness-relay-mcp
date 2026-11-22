@@ -3,7 +3,7 @@ import type { ApprovalDecision, InteractionAgent, InteractionOwner, NativeApprov
 
 /** Public Cordis event/registry surface; no imports of Harness implementation internals. */
 export interface NativeInteractionContext {
-  get(name: 'agents'): { get(id: string): unknown; roots(): readonly unknown[] } | undefined
+  get(name: 'agents'): { get(id: string): unknown; roots?(): readonly unknown[] } | undefined
   on(event: 'approval/request', handler: (request: NativeApprovalRequest, next: () => Promise<ApprovalDecision | 'unavailable'>) => Promise<ApprovalDecision | 'unavailable'>, options: { prepend: true }): () => void
   on(event: 'user-questions/request', handler: (request: NativeQuestionRequest, next: () => Promise<QuestionAnswer>) => Promise<QuestionAnswer>, options: { prepend: true }): () => void
 }
@@ -11,7 +11,13 @@ export interface NativeInteractionContext {
 /** Resolve only the exact live root Agent. Native child agents keep their existing interaction policy. */
 export function nativeInteractionOwner(ctx: NativeInteractionContext, agent: InteractionAgent, ownerOfSession: (sessionId: string) => InteractionOwner | undefined): InteractionOwner | undefined {
   const agents = ctx.get('agents')
-  if (agents?.get(agent.id) !== agent || !agents.roots().includes(agent)) return undefined
+  if (agents?.get(agent.id) !== agent) return undefined
+  // Legacy registries track the root set. Newer Harness records child origin on the Session header.
+  const header = agent.session.header
+  const isRoot = typeof agents.roots === 'function'
+    ? agents.roots().includes(agent)
+    : header !== undefined && header.origin === undefined
+  if (!isRoot) return undefined
   return ownerOfSession(agent.session.id)
 }
 

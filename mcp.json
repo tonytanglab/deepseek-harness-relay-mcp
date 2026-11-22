@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "harness-relay-mcp": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CURSOR_PLUGIN_ROOT}/dist/dsh-relay-proxy.mjs"],
+      "env": {
+        "DSH_RELAY_CLIENT_PRINCIPAL_ID": "cursor:plugin"
+      }
+    }
+  }
+}

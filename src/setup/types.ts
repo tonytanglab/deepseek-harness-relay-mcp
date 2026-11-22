@@ -1,4 +1,5 @@
-export type ClientName = 'codex' | 'claude' | 'cursor' | 'opencode'
+export const CLIENT_NAMES = ['codex', 'claude', 'cursor', 'opencode', 'antigravity'] as const
+export type ClientName = typeof CLIENT_NAMES[number]
 
 export type ClientScope = 'local' | 'project' | 'user'
 

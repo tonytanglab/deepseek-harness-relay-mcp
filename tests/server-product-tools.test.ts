@@ -73,6 +73,13 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
     })
     assert.equal((setupDoctor.structuredContent as { schemaVersion?: number }).schemaVersion, 1)
 
+    const antigravity = await client.callTool({
+      name: 'setup_doctor',
+      arguments: { ...setupArguments(), client: 'antigravity' },
+    })
+    assert.notEqual(antigravity.isError, true)
+    assert.equal((antigravity.structuredContent as { client?: string } | undefined)?.client, 'antigravity')
+
     const summary = await client.callTool({ name: 'get_run_summary', arguments: { runId: '5f502f03-3a5e-4e3d-9b18-373306961a79' } })
     assert.deepEqual(summary.structuredContent, {
       runId: '5f502f03-3a5e-4e3d-9b18-373306961a79',

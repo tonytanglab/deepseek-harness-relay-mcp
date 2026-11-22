@@ -9,6 +9,7 @@ export async function syncVersions(root = process.env.DSH_RELAY_SYNC_VERSION_ROO
   const versionFile = resolve(root, 'version.json')
   const packageFile = resolve(root, 'package.json')
   const pluginFile = resolve(root, '.codex-plugin', 'plugin.json')
+  const otherClientManifests = ['.antigravity-plugin', '.cursor-plugin'].map(directory => resolve(root, directory, 'plugin.json'))
   const marketplaceFile = resolve(root, '.agents', 'plugins', 'marketplace.json')
 
   if (checkOnly && adoptPluginVersion) throw new Error('--check and --from-plugin cannot be combined')
@@ -17,7 +18,9 @@ export async function syncVersions(root = process.env.DSH_RELAY_SYNC_VERSION_ROO
   const { version } = await readJsonFileStrict(sourceFile)
   if (typeof version !== 'string' || version.length === 0) throw new Error(`${sourceFile} must contain a non-empty version`)
 
-  const targetFiles = adoptPluginVersion ? [versionFile, packageFile] : [packageFile, pluginFile]
+  const targetFiles = adoptPluginVersion
+    ? [versionFile, packageFile, ...otherClientManifests]
+    : [packageFile, pluginFile, ...otherClientManifests]
   const changed = []
   for (const file of targetFiles) {
     const value = await readJsonFileStrict(file)

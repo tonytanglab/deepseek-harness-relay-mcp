@@ -1,3 +1,4 @@
+import { AntigravityConfigAdapter } from './antigravity-config-adapter.js'
 import { ClaudeConfigAdapter } from './claude-config-adapter.js'
 import { CodexConfigAdapter } from './codex-config-adapter.js'
 import { CursorConfigAdapter } from './cursor-config-adapter.js'
@@ -109,5 +110,11 @@ export class ClientSetupFacade {
 }
 
 function defaultAdapters(): readonly ClientConfigAdapter[] {
-  return [new CodexConfigAdapter(), new ClaudeConfigAdapter(), new CursorConfigAdapter(), new OpenCodeConfigAdapter()]
+  return [
+    new CodexConfigAdapter(),
+    new ClaudeConfigAdapter(),
+    new CursorConfigAdapter(),
+    new OpenCodeConfigAdapter(),
+    new AntigravityConfigAdapter(),
+  ]
 }

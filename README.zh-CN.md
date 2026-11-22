@@ -61,14 +61,14 @@ Harness Relay MCP 是独立的第三方项目，并非由 DeepSeek AI 开发、�
 - 支持有序文本和内联图片提示词，并对 base64 和大小进行有界校验。
 - 持久保存运行标识，MCP Server 重启后可恢复监控。
 - 返回稳定的 Harness Web 会话链接；随附 Skill 会在分享前验证页面确实可见。
-- 兼容 Codex、Claude Code、OpenCode、Cursor 及其他符合标准的 MCP 客户端。
+- 兼容 Codex、Claude Code、OpenCode、Cursor、Google Antigravity 及其他符合标准的 MCP 客户端。
 - 内部 bundle 使用 Harness 0.1.2 的直接 Typert Gateway 和原生权限服务；外部 Agent 通过认证 HTTP 或无状态 stdio proxy 调用。
 - 保留独立 `dsh-relay` 模式用于旧版 Harness 和显式回滚。
 
 ## 运行要求
 
 - Node.js `^22.19` 或 `>=24`。
-- Relay 0.2.19 内部模式要求 DeepSeek Harness `>=0.2.1-alpha.5 <0.3.0`、`web` profile，并只允许 `127.0.0.1` 绑定。使用新版 Typert 网关要求的公开 connection Peer API；须同时更新内嵌 bundle 与客户端代理并重启 Host，旧版 Relay 未传递必需的 Peer。
+- 内部模式需要 Harness `web` profile 和 `127.0.0.1` 绑定。Relay 0.2.20 已验证 Harness `0.2.2-rc.5`（npm `latest`），并保留 `0.2.1-alpha.5` 的兼容声明。`0.2.3-alpha.1` 的 npm 包存在 Cordis 导出缺失，Relay 在该预览版上使用同一发布标签的源码构建产物通过了兼容验证。这两个新版 Harness 需要 Node.js `>=24.9.0`。更新内嵌 bundle 和客户端代理后，重启 Harness Web Host。
 - 独立兼容模式要求已在本机回环 HTTP 地址运行的 DeepSeek Harness Web Host。
 - 目标工作区必须已在 Harness 中登记，或属于明确配置的允许根目录。
 
@@ -79,6 +79,8 @@ http://127.0.0.1:3080/
 ```
 
 ## 安装
+
+换电脑后先在本机启动 Harness 的 `web` profile，再安装使用的客户端。Codex、Cursor 和 Antigravity 共用一个 Relay 版本和委派 Skill。用 `.tgz` 安装时保留解包得到的 `package/` 目录结构，其中包含 `dist/`、`skills/` 和各客户端清单。桌面客户端需要能通过 `PATH` 找到 `node`。
 
 ### 安装为 Harness 内部 bundle（推荐）
 
@@ -117,6 +119,26 @@ codex plugin list
 若更新后原生工具消失，且 Codex 报 `connection closed: initialize response`，先检查任务引用的缓存目录是否仍包含 `dist/dsh-relay-proxy.mjs`。新缓存目录存在不代表运行中的宿主已切换。使用桌面应用对应的 Codex CLI 从已确认的 Marketplace 重装；如果新任务仍引用已移除的缓存，保存进行中的工作后重启应用。必须验证原生 `doctor` 和工具目录后再宣称恢复，不得改用临时 Relay 客户端。
 
 如果 personal Marketplace 指向本地源码目录，Codex 安装器只复制现有文件，不会运行 TypeScript/esbuild 构建。每次拉取源码后必须先在该目录执行 `pnpm run prepare:codex-local`；命令会构建并校验三套 `dist` 产物的内嵌版本及 proxy 的完整工具目录，然后才能生成 cachebuster 并执行 `codex plugin add`。否则可能出现 manifest 和安装记录显示新版、实际 MCP 进程仍运行旧 bundle 的假升级。正式使用优先采用上面的仓库 Marketplace/npm 安装路径。
+
+需要使用尚未发布到 npm 的 `.tgz` 时，把它解包到固定目录，在 `package/` 同级创建 `.agents/plugins/marketplace.json`。
+
+```json
+{
+  "name": "harness-relay-local",
+  "plugins": [{
+    "name": "deepseek-harness-relay",
+    "source": { "source": "local", "path": "./package" },
+    "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" }
+  }]
+}
+```
+
+将下列命令中的路径指向包含 `.agents/` 和 `package/` 的目录。用同一源码版本重新构建并更新时，在暂存包的 `.codex-plugin/plugin.json` 版本上附加新的 `+codex.YYYYMMDDhhmmss` 缓存标识。
+
+```powershell
+codex plugin marketplace add <解包目录>
+codex plugin add deepseek-harness-relay@harness-relay-local
+```
 
 #### Codex 内置 MCP 的生成规范（不要写错入口）
 
@@ -215,6 +237,41 @@ pnpm run build
 proxy 默认读取 `$DSH_HOME/plugins/dsh-relay/web/relay-endpoint.json`；未设置 `DSH_HOME` 时统一回退到用户目录下的 `.dsh`，空白 `DSH_PROFILE` 回退到 `web`。自定义状态目录时显式设置 `DSH_RELAY_ENDPOINT_DESCRIPTOR`。客户端配置不保存 token。`harness-relay-mcp` 包根入口是 Harness bundle，同时提供 `harness-relay-mcp`、`harness-relay-mcp-proxy` 命令；旧 `dsh-relay` 命令作为兼容别名保留。
 
 0.2.3 起，内部 bundle 会在 endpoint 同目录原子发布不含凭证的 `relay-status.json`。stdio proxy 先启动本地 MCP；`tools/list` 与本地 `doctor` 不等待远端连接或 Harness 自动恢复。proxy 从 embedded Relay 的同一组注册定义生成完整产品工具目录，因此恢复期间 Codex 仍能发现 `list_capabilities`、`start_review`、`wait_run` 和其他原生工具。当 endpoint 缺失、状态失败、owner epoch 不匹配、token 不可读或 POST 返回 401/404/405/503 时，除 `doctor` 外的调用在路由恢复前统一返回 `RELAY_ROUTE_UNAVAILABLE`。Host 恢复后，同一个 proxy 会重新连接并发送 `tools/list_changed`，让客户端刷新远端元数据变化。
+
+### 安装 Cursor 插件
+
+将 `.tgz` 解出的 `package/` 目录复制为 `~/.cursor/plugins/local/harness-relay-mcp/`，保留 `.cursor-plugin/` 等隐藏目录。执行 **Developer: Reload Window**，在 **Customize** 中确认插件同时提供 Relay MCP 和 `delegate-to-deepseek-harness`。若企业策略禁用本地插件导入，使用获准的分发方式。 [Cursor 插件文档](https://cursor.com/docs/plugins#test-plugins-locally)
+
+已有手动 MCP 配置时，可继续使用 `~/.cursor/mcp.json` 或项目的 `.cursor/mcp.json`，通过 `setup_plan` 的 `client: cursor` 生成对应入口。手动配置同时需要把 `skills/delegate-to-deepseek-harness/` 放入客户端的 Skill 目录。每个客户端只启用一个 Relay 入口，迁移时先结束由原客户端身份发起的任务。 [Cursor MCP 文档](https://cursor.com/docs/mcp)
+
+### 接入 Google Antigravity
+
+Relay 安装包附带 Antigravity 原生清单、MCP 配置和委派 Skill。解压 `.tgz` 后，对包含 `dist/` 的 `package` 目录运行 `agy plugin install <package 目录>`。从源码安装时，先运行 `pnpm run prepare:codex-local` 生成并校验 `dist/`，再运行 `agy plugin install .`。Antigravity 会加载 `harness-relay-mcp_harness-relay-mcp` 和 `delegate-to-deepseek-harness`。 [Antigravity 插件文档](https://antigravity.google/docs/build-plugins/)
+
+如果直接配置 MCP，用 `setup_plan` 选择 `client: antigravity`。用户级文件是 `~/.gemini/config/mcp_config.json`，工作区级文件是项目下的 `.agents/mcp_config.json`。将生成的 `mcpServers.harness-relay-mcp` 合并进已有配置。选用一种入口可避免重复工具和不同客户端身份。 [Antigravity MCP 文档](https://antigravity.google/docs/mcp)
+
+下面是 Windows 用户级示例。把路径替换为本机的 Node、已安装的 Relay 包入口和正在使用的 Harness 端点描述文件。
+
+```json
+{
+  "mcpServers": {
+    "harness-relay-mcp": {
+      "command": "C:/Program Files/nodejs/node.exe",
+      "args": ["C:/Users/you/.dsh/profiles/web/node_modules/harness-relay-mcp/dist/dsh-relay-proxy.mjs"],
+      "env": {
+        "DSH_RELAY_CLIENT_PRINCIPAL_ID": "antigravity:user",
+        "DSH_RELAY_ENDPOINT_DESCRIPTOR": "C:/Users/you/.dsh/plugins/dsh-relay/web/relay-endpoint.json"
+      }
+    }
+  }
+}
+```
+
+在 Antigravity 的 MCP 管理界面重新加载服务器。Bearer token 由代理从本机受保护文件读取。
+
+### 验证客户端安装
+
+在客户端新开对话，确认能找到 `doctor`、`list_capabilities`、`start_review` 和 `wait_run`。确认 `doctor.relayVersion` 为安装的版本且 `remote.connected` 为 `true`，再运行 `list_capabilities` 和 `list_workspaces`。从目录选择确切的 `provider`、`model` 和已登记工作区。用 `start_review` 发起只读测试，在 `reviewTargets` 和 `contextReadScope` 中各填入同一条已授权的非敏感文件路径，请模型只返回指定短文本，再通过 `wait_run` 核对终态和回复。工具名可能带客户端添加的插件或 MCP 前缀。
 
 ## 快速开始
 
@@ -379,7 +436,7 @@ running ── status/wait/steer/cancel ──> succeeded | incomplete | failed 
 
 ## 客户端配置与监控投影
 
-`setup_plan` 支持 Codex、Claude Code、Cursor，以及显式标记版本的 OpenCode V2 配置结构。它接收已经解析的 Node 与 Relay 入口绝对路径，只返回结构化最小补丁，绝不直接编辑客户端配置。启动器平台必须与配置平台一致；`pnpm.exe`、`pnpm.cmd` 等包管理器 shim 不能充当 Node 运行时。
+`setup_plan` 支持 Codex、Claude Code、Cursor、Google Antigravity 和显式标记版本的 OpenCode V2 配置结构。它接收已经解析的 Node 与 Relay 入口绝对路径，只返回结构化最小补丁，绝不直接编辑客户端配置。启动器平台必须与配置平台一致；`pnpm.exe`、`pnpm.cmd` 等包管理器 shim 不能充当 Node 运行时。
 
 `setup_doctor` 同样无副作用。文件系统、Broker、Host、工作区、模型和权限事实必须由获得授权的调用方提供；未提供的探针会标记为 `skipped`，不会猜测结果。
 

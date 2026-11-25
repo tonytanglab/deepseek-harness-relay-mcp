@@ -3,6 +3,7 @@ export type RelayRuntimePathSource = 'environment' | 'default' | 'explicit'
 export interface RelayRuntimeResolveInput {
   mode: 'embedded' | 'standalone'
   env?: NodeJS.ProcessEnv
+  cwd?: string
   homeDirectory?: string
   hostIdentity?: string
   stateDirectory?: string

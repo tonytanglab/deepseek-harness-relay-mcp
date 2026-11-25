@@ -65,6 +65,16 @@ test('shared runtime resolver defaults blank home/profile values and isolates ho
   assert.match(paths.stateDirectory, /plugins[\\/]dsh-relay[\\/]web[\\/]/u)
   assert.match(paths.stateFile, /state\.json$/u)
   assert.match(paths.statusFile, /relay-status\.json$/u)
+  const desktopPaths = resolveRelayRuntimePaths({
+    mode: 'embedded',
+    homeDirectory: home,
+    cwd: join(home, '.dsh', 'profiles', 'desktop'),
+    env: { DSH_HOME: '  ', DSH_PROFILE: '  ' },
+    hostIdentity: 'http://localhost:3081',
+  })
+  assert.equal(desktopPaths.profile, 'desktop')
+  assert.equal(desktopPaths.profileSource, 'default')
+  assert.match(desktopPaths.stateDirectory, /plugins[\\/]dsh-relay[\\/]desktop[\\/]/u)
   await rm(home, { recursive: true, force: true })
 })
 

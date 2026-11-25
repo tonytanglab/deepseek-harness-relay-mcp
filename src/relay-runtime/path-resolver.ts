@@ -45,7 +45,12 @@ export function resolveRelayRuntimePaths(input: RelayRuntimeResolveInput): Relay
     : resolve(homeCandidate)
   const dshHomeSource = homeCandidate === undefined || homeCandidate.length === 0 ? 'default' : 'environment'
   const profileCandidate = env.DSH_PROFILE?.trim()
-  const profile = profileCandidate === undefined || profileCandidate.length === 0 ? 'web' : profileCandidate
+  const inferredDesktop = (profileCandidate === undefined || profileCandidate.length === 0)
+    && input.mode === 'embedded'
+    && isProfileDirectory(input.cwd ?? process.cwd(), resolve(dshHome, 'profiles', 'desktop'))
+  const profile = profileCandidate === undefined || profileCandidate.length === 0
+    ? (inferredDesktop ? 'desktop' : 'web')
+    : profileCandidate
   const profileSource = profileCandidate === undefined || profileCandidate.length === 0 ? 'default' : 'environment'
   if (!/^[A-Za-z0-9._-]+$/u.test(profile)) {
     throw new RelayRuntimePathError(
@@ -180,6 +185,14 @@ export async function prepareRelayRuntimePaths(paths: RelayRuntimePaths): Promis
       { cause: error },
     )
   }
+}
+
+function isProfileDirectory(candidate: string, expected: string): boolean {
+  const normalizedCandidate = resolve(candidate)
+  const normalizedExpected = resolve(expected)
+  return process.platform === 'win32'
+    ? normalizedCandidate.toLocaleLowerCase('en-US') === normalizedExpected.toLocaleLowerCase('en-US')
+    : normalizedCandidate === normalizedExpected
 }
 
 function pathError(error: unknown, source: string): RelayRuntimePathError {

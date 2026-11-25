@@ -374,6 +374,94 @@ test('descriptor reader rejects credentials and non-loopback endpoints', async t
   await assert.rejects(readEndpointDescriptor(file), /loopback HTTP/iu)
 })
 
+test('stdio proxy prefers ready desktop endpoint over web and falls back to web when desktop is absent', async t => {
+  const root = await temporaryDirectory(t)
+  const desktopDir = join(root, 'desktop')
+  const webDir = join(root, 'web')
+  const { mkdir } = await import('node:fs/promises')
+  await mkdir(desktopDir, { recursive: true })
+  await mkdir(webDir, { recursive: true })
+
+  const createBackend = async (label: string) => {
+    const token = 'D'.repeat(43)
+    const tokenFile = join(root, `${label}.token`)
+    await writeFile(tokenFile, `${token}\n`, { encoding: 'utf8', mode: 0o600 })
+    let facade: McpHttpFacade
+    const http = createHttpServer((req, res) => { void facade.handle(req, res) })
+    await listen(http)
+    t.after(async () => { await facade.drain(); await close(http) })
+    const address = http.address()
+    assert(address !== null && typeof address === 'object')
+    const host = `127.0.0.1:${address.port}`
+    facade = new McpHttpFacade({
+      token,
+      allowedHosts: [host],
+      allowedOrigins: [],
+      maxBodyBytes: 64 * 1024,
+      maxConcurrent: 8,
+      requestsPerMinute: 1_000,
+      drainTimeoutMs: 100,
+    }, () => {
+      const server = new McpServer({ name: label, version: '1.0.0' })
+      server.registerTool('whoami', { inputSchema: {}, outputSchema: { backend: z.string() } }, () => ({
+        content: [{ type: 'text', text: label }],
+        structuredContent: { backend: label },
+      }))
+      return server
+    })
+    return { host, tokenFile }
+  }
+
+  const desktopBackend = await createBackend('desktop')
+  const webBackend = await createBackend('web')
+  const desktopDescriptor = join(desktopDir, 'relay-endpoint.json')
+  const webDescriptor = join(webDir, 'relay-endpoint.json')
+  await writeFile(webDescriptor, JSON.stringify({
+    schemaVersion: 1,
+    authorityId: 'authority-web',
+    mode: 'embedded',
+    mcpUrl: `http://${webBackend.host}/plugins/dsh-relay/mcp`,
+    tokenFilePath: webBackend.tokenFile,
+    hostWebUrl: `http://${webBackend.host}/`,
+    ownerEpoch: 1,
+    updatedAt: '2026-08-20T00:00:00.000Z',
+  }), { encoding: 'utf8' })
+  await writeReadyStatus(webDir, 'authority-web', 1)
+
+  const proxy = new StdioProxyFacade({
+    descriptorFile: webDescriptor,
+    preferredDescriptorFiles: [{ descriptorFile: desktopDescriptor }],
+    clientPrincipalId: 'antigravity:test',
+    requestTimeoutMs: 5_000,
+  })
+  const [clientTransport, proxyTransport] = InMemoryTransport.createLinkedPair()
+  await proxy.connect(proxyTransport)
+  t.after(async () => { await proxy.close() })
+  const client = new Client({ name: 'local', version: '1.0.0' })
+  await client.connect(clientTransport)
+  t.after(async () => { await client.close() })
+
+  assert.deepEqual((await client.callTool({ name: 'whoami', arguments: {} })).structuredContent, { backend: 'web' })
+  const doctorWeb = await client.callTool({ name: 'doctor', arguments: {} })
+  assert.equal((doctorWeb.structuredContent as { descriptorFile?: unknown }).descriptorFile, webDescriptor)
+
+  await writeFile(desktopDescriptor, JSON.stringify({
+    schemaVersion: 1,
+    authorityId: 'authority-desktop',
+    mode: 'embedded',
+    mcpUrl: `http://${desktopBackend.host}/plugins/dsh-relay/mcp`,
+    tokenFilePath: desktopBackend.tokenFile,
+    hostWebUrl: `http://${desktopBackend.host}/`,
+    ownerEpoch: 1,
+    updatedAt: '2026-08-20T00:00:00.000Z',
+  }), { encoding: 'utf8' })
+  await writeReadyStatus(desktopDir, 'authority-desktop', 1)
+
+  assert.deepEqual((await client.callTool({ name: 'whoami', arguments: {} })).structuredContent, { backend: 'desktop' })
+  const doctorDesktop = await client.callTool({ name: 'doctor', arguments: {} })
+  assert.equal((doctorDesktop.structuredContent as { descriptorFile?: unknown }).descriptorFile, desktopDescriptor)
+})
+
 function listen(server: HttpServer): Promise<void> {
   return new Promise((resolve, reject) => {
     server.once('error', reject)

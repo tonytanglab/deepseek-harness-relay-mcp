@@ -2,10 +2,24 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { RelayRuntimeFacade } from './relay-runtime/index.js'
 import { StdioProxyFacade } from './stdio-proxy/index.js'
 
-const runtimePaths = new RelayRuntimeFacade().resolve({ mode: 'embedded', env: process.env })
+const runtimeFacade = new RelayRuntimeFacade()
+const runtimePaths = runtimeFacade.resolve({ mode: 'embedded', env: process.env })
+const hasExplicitProfile = Boolean(process.env.DSH_PROFILE?.trim()) || Boolean(process.env.DSH_RELAY_ENDPOINT_DESCRIPTOR?.trim())
+const desktopPaths = hasExplicitProfile
+  ? null
+  : runtimeFacade.resolve({
+    mode: 'embedded',
+    env: { ...process.env, DSH_PROFILE: 'desktop' },
+  })
 const proxy = new StdioProxyFacade({
   descriptorFile: runtimePaths.endpointDescriptorFile,
   statusFile: runtimePaths.statusFile,
+  ...(desktopPaths === null ? {} : {
+    preferredDescriptorFiles: [{
+      descriptorFile: desktopPaths.endpointDescriptorFile,
+      statusFile: desktopPaths.statusFile,
+    }],
+  }),
   clientPrincipalId: process.env.DSH_RELAY_CLIENT_PRINCIPAL_ID?.trim() || 'local-user',
   requestTimeoutMs: integer(process.env.DSH_RELAY_PROXY_TIMEOUT_MS, 35_000, 1_000, 120_000),
   maxTaskCharacters: integer(process.env.DSH_RELAY_MAX_TASK_CHARACTERS, 100_000, 1, 1_000_000),

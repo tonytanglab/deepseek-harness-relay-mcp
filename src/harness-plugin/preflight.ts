@@ -28,13 +28,15 @@ export interface HarnessProfilePreflight {
  * @param probe - Profile and service facts collected by setup/doctor.
  * @returns Machine-readable preflight result.
  */
+const SUPPORTED_HARNESS_PROFILES = new Set(['web', 'desktop'])
+
 export function preflightHarnessProfile(probe: HarnessProfileProbe): HarnessProfilePreflight {
-  if (probe.profile !== 'web') {
+  if (!SUPPORTED_HARNESS_PROFILES.has(probe.profile)) {
     return {
       ready: false,
       code: 'HARNESS_WEB_PROFILE_REQUIRED',
       missingServices: [],
-      message: `DSH Relay requires the Harness web profile; received ${probe.profile}`,
+      message: `DSH Relay requires the Harness web or desktop profile; received ${probe.profile}`,
     }
   }
   const available = new Set(probe.availableServices)
@@ -44,8 +46,8 @@ export function preflightHarnessProfile(probe: HarnessProfileProbe): HarnessProf
       ready: false,
       code: 'HARNESS_SERVICES_MISSING',
       missingServices,
-      message: `Harness web profile is missing required services: ${missingServices.join(', ')}`,
+      message: `Harness ${probe.profile} profile is missing required services: ${missingServices.join(', ')}`,
     }
   }
-  return { ready: true, code: 'READY', missingServices: [], message: 'Harness web profile can host DSH Relay' }
+  return { ready: true, code: 'READY', missingServices: [], message: `Harness ${probe.profile} profile can host DSH Relay` }
 }

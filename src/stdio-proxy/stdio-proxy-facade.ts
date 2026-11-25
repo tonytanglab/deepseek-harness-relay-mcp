@@ -35,6 +35,8 @@ export class StdioProxyFacade {
     },
   )
   private readonly diagnostics: ProxyDiagnosticsFacade
+  private readonly preferredDiagnostics: readonly ProxyDiagnosticsFacade[]
+  private activeDiagnostics: ProxyDiagnosticsFacade
   private readonly hostAutostart: NonNullable<StdioProxyDependencies['hostAutostart']> | null
   private remote: Client | null = null
   private remoteAuthorityKey: string | null = null
@@ -47,6 +49,10 @@ export class StdioProxyFacade {
     if (!principalPattern.test(config.clientPrincipalId)) throw new Error('invalid DSH Relay client principal')
     this.productTools = createProductToolCatalog(config.maxTaskCharacters)
     this.diagnostics = new ProxyDiagnosticsFacade(config.descriptorFile, config.statusFile, dependencies)
+    this.preferredDiagnostics = (config.preferredDescriptorFiles ?? [])
+      .filter(candidate => candidate.descriptorFile !== config.descriptorFile)
+      .map(candidate => new ProxyDiagnosticsFacade(candidate.descriptorFile, candidate.statusFile, dependencies))
+    this.activeDiagnostics = this.diagnostics
     this.hostAutostart = dependencies.hostAutostart
       ?? (config.autoStart === true
         ? new HarnessHostAutostartFacade(
@@ -90,15 +96,16 @@ export class StdioProxyFacade {
         ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
       }
     } catch (error) {
-      await this.invalidateRemote(this.diagnostics.remoteFailure(error))
+      await this.invalidateRemote(this.activeDiagnostics.remoteFailure(error))
       return { tools: cursor === undefined ? await this.localToolCatalog() : [] }
     }
   }
 
   private async callTool(name: string, args: Record<string, unknown> | undefined): Promise<object> {
     if (name === doctorTool.name) {
-      if (this.remote === null) this.beginRemoteRefresh()
-      const report = await this.diagnostics.doctor(relayVersion, this.remote !== null, this.lastError)
+      if (this.remote === null) await this.ensureRemote().catch(() => false)
+      else await this.refreshPreferredSelection()
+      const report = await this.activeDiagnostics.doctor(relayVersion, this.remote !== null, this.lastError)
       return doctorResult(report)
     }
     if (!await this.ensureRemote()) return this.unavailableResult(name, this.requireFailure())
@@ -112,7 +119,7 @@ export class StdioProxyFacade {
       )
     } catch (error) {
       if (isRequestTimeout(error)) return this.requestTimeoutResult(name, this.config.requestTimeoutMs)
-      const routeFailure = this.diagnostics.remoteFailure(error)
+      const routeFailure = this.activeDiagnostics.remoteFailure(error)
       await this.invalidateRemote(routeFailure)
       return this.unavailableResult(name, routeFailure)
     }
@@ -126,12 +133,25 @@ export class StdioProxyFacade {
 
   private beginRemoteRefresh(): void {
     void this.ensureRemote().catch(error => {
-      this.lastError = this.diagnostics.remoteFailure(error)
+      this.lastError = this.activeDiagnostics.remoteFailure(error)
     })
   }
 
+  private async refreshPreferredSelection(): Promise<ProxyInspection | null> {
+    for (const candidate of this.preferredDiagnostics) {
+      const inspected = await candidate.inspect()
+      if (inspected.failure === null) {
+        this.activeDiagnostics = candidate
+        return inspected
+      }
+    }
+    this.activeDiagnostics = this.diagnostics
+    return null
+  }
+
   private async refreshRemote(): Promise<boolean> {
-    let inspected = await this.diagnostics.inspect()
+    const preferred = await this.refreshPreferredSelection()
+    let inspected = preferred ?? await this.diagnostics.inspect()
     if (inspected.failure !== null && this.hostAutostart !== null) {
       inspected = await this.hostAutostart.recover(inspected, () => this.diagnostics.inspect())
     }
@@ -176,7 +196,7 @@ export class StdioProxyFacade {
       return true
     } catch (error) {
       await candidate.close().catch(() => undefined)
-      this.lastError = this.diagnostics.remoteFailure(error)
+      this.lastError = this.activeDiagnostics.remoteFailure(error)
       return false
     }
   }

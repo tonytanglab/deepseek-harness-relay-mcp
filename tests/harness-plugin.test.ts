@@ -125,7 +125,7 @@ test('headless profile preflight blocks before profile mutation', () => {
     ready: false,
     code: 'HARNESS_WEB_PROFILE_REQUIRED',
     missingServices: [],
-    message: 'DSH Relay requires the Harness web profile; received headless',
+    message: 'DSH Relay requires the Harness web or desktop profile; received headless',
   })
   assert.deepEqual(preflightHarnessProfile({
     profile: 'web',
@@ -141,6 +141,13 @@ test('headless profile preflight blocks before profile mutation', () => {
   })
   assert.equal(preflightHarnessProfile({
     profile: 'web',
+    availableServices: [
+      'connection', 'agents', 'typertGateway', 'webServer', 'sessions', 'sessionController', 'workspaceController',
+      'settingsController', 'agentPresets', 'permissionPresets',
+    ],
+  }).ready, true)
+  assert.equal(preflightHarnessProfile({
+    profile: 'desktop',
     availableServices: [
       'connection', 'agents', 'typertGateway', 'webServer', 'sessions', 'sessionController', 'workspaceController',
       'settingsController', 'agentPresets', 'permissionPresets',

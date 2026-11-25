@@ -4,9 +4,15 @@ import type { ProcessProbe } from '../state-repository/index.js'
 
 export type { RelayEndpointDescriptor }
 
+export interface StdioProxyEndpointCandidate {
+  descriptorFile: string
+  statusFile?: string
+}
+
 export interface StdioProxyConfig {
   descriptorFile: string
   statusFile?: string
+  preferredDescriptorFiles?: readonly StdioProxyEndpointCandidate[]
   clientPrincipalId: string
   requestTimeoutMs: number
   maxTaskCharacters?: number

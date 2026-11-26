@@ -541,6 +541,12 @@ pnpm pack --dry-run
 | MCP Server ID | `harness-relay-mcp` |
 | Skill | `delegate-to-deepseek-harness` |
 
+## 双端诊断与长会话接力
+
+本地 stdio 代理的 `doctor` 接受 `{"allTargets":true}`。也可以运行 `dsh-relay-proxy doctor --all-targets`。诊断会分别握手 Desktop（3081）和 Web（3080），显示各自的端口、进程、authority 和当前代理是否选中该路由。
+
+启动 Run 时保留 `lastEventSeq`，再将它传给 `get_run_summary` 的 `startEventSeq`。游标增加 250 个事件会返回接力提示。阶段完成时也可以传 `phaseComplete: true`。先保存已采用产物、原任务及剩余工作，当前 Run 成功结束后用新 Run 接续。
+
 ## 许可证
 
 MIT

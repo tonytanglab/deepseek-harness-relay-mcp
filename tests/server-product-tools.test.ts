@@ -83,12 +83,15 @@ test('exposes setup and monitoring Facades as read-only MCP tools', async () => 
     const summary = await client.callTool({ name: 'get_run_summary', arguments: { runId: '5f502f03-3a5e-4e3d-9b18-373306961a79' } })
     assert.deepEqual(summary.structuredContent, {
       runId: '5f502f03-3a5e-4e3d-9b18-373306961a79',
+      serviceId: 'service-1',
+      webUrl: 'http://127.0.0.1:3080/?sessionId=session-1',
       status: 'running',
       permissionMode: 'read-only',
       startedAt: '2026-08-19T00:00:00.000Z',
       updatedAt: '2026-08-19T00:00:00.000Z',
       nextAction: 'wait',
       elapsedMs: 0,
+      lastEventSeq: 1,
       provider: 'kimi-coding',
       model: 'k3',
       reasoningEffort: 'max',

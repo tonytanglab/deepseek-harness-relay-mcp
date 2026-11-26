@@ -11,9 +11,16 @@ const desktopPaths = hasExplicitProfile
     mode: 'embedded',
     env: { ...process.env, DSH_PROFILE: 'desktop' },
   })
+const diagnosticTargets = ([['desktop', 3081], ['web', 3080]] as const).map(([profile, port]) => {
+  const paths = runtimeFacade.resolve({ mode: 'embedded', env: {
+    ...process.env, DSH_PROFILE: profile, DSH_RELAY_ENDPOINT_DESCRIPTOR: undefined,
+  } })
+  return { profile, port, descriptorFile: paths.endpointDescriptorFile, statusFile: paths.statusFile }
+})
 const proxy = new StdioProxyFacade({
   descriptorFile: runtimePaths.endpointDescriptorFile,
   statusFile: runtimePaths.statusFile,
+  diagnosticTargets,
   ...(desktopPaths === null ? {} : {
     preferredDescriptorFiles: [{
       descriptorFile: desktopPaths.endpointDescriptorFile,
@@ -26,7 +33,13 @@ const proxy = new StdioProxyFacade({
   autoStart: boolean(process.env.DSH_RELAY_AUTO_START, true),
   autoStartTimeoutMs: integer(process.env.DSH_RELAY_AUTO_START_TIMEOUT_MS, 120_000, 1_000, 300_000),
 })
-await proxy.connect(new StdioServerTransport())
+if (process.argv[2] === 'doctor' && process.argv.includes('--all-targets')) {
+  const report = await proxy.doctor(true)
+  process.stdout.write(`${JSON.stringify(report)}\n`)
+  process.exitCode = report.ok ? 0 : 1
+} else {
+  await proxy.connect(new StdioServerTransport())
+}
 
 function integer(raw: string | undefined, fallback: number, min: number, max: number): number {
   if (raw === undefined) return fallback

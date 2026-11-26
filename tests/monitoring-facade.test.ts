@@ -58,6 +58,8 @@ test('projects every current RunSnapshot status without defining a parallel stat
     const summary = facade.project(snapshot(status), { updatedAt: finishedAt })
     assert.equal(summary.status, status)
     assert.equal(summary.nextAction, nextAction)
+    assert.equal(summary.serviceId, 'service-1')
+    assert.equal(summary.webUrl, 'http://127.0.0.1:3080/?sessionId=session-1')
     assert.equal(summary.provider, 'kimi-coding')
     assert.equal(summary.model, 'k3')
     assert.equal(summary.reasoningEffort, 'max')
@@ -72,6 +74,15 @@ test('uses the durable last progress timestamp for a live run summary', () => {
   assert.equal(summary.updatedAt, finishedAt)
   assert.equal(summary.elapsedMs, 5000)
   assert.equal(summary.nextAction, 'wait')
+})
+
+test('reports handoff at 250 new events or a phase boundary, and waits for terminal success', () => {
+  const facade = new MonitoringFacade()
+  assert.equal(facade.project({ ...snapshot('running'), lastEventSeq: 350 }, { startEventSeq: 101 }).handoff, undefined)
+  assert.deepEqual(facade.project({ ...snapshot('running'), lastEventSeq: 351 }, { startEventSeq: 101 }).handoff,
+    { reason: 'event-threshold', nextRunAllowed: false })
+  assert.deepEqual(facade.project(snapshot('succeeded'), { phaseComplete: true }).handoff,
+    { reason: 'phase-complete', nextRunAllowed: true })
 })
 
 test('maps every attention reason to an executable next action', () => {

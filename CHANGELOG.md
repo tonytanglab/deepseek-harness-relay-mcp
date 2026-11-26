@@ -2,6 +2,11 @@
 
 ## 0.2.20
 
+### 2026-11-26
+
+- 增加 Desktop 与 Web 的并行只读 MCP 握手诊断及实际选中路由。stdio 工具 `doctor` 接受 `allTargets`，命令行支持 `doctor --all-targets`。
+- `get_run_summary` 返回服务归属、会话链接和事件游标，并在增加 250 个事件或结束制作阶段时指出是否可交接至新 Run。
+
 ### 2026-11-22
 
 - 打包 Google Antigravity 原生插件清单、MCP 和委派 Skill。也支持生成用户级或工作区级 MCP 配置，统一走同一个本地 stdio proxy。

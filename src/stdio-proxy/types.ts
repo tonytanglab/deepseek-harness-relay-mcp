@@ -13,6 +13,7 @@ export interface StdioProxyConfig {
   descriptorFile: string
   statusFile?: string
   preferredDescriptorFiles?: readonly StdioProxyEndpointCandidate[]
+  diagnosticTargets?: readonly (StdioProxyEndpointCandidate & { profile: string; port: number })[]
   clientPrincipalId: string
   requestTimeoutMs: number
   maxTaskCharacters?: number
@@ -73,4 +74,14 @@ export interface ProxyDoctorReport {
   remote: { connected: boolean; lastError: ProxyRouteFailure | null }
   errorCode: ProxyRouteReasonCode | null
   remediation: string | null
+  allTargetsOnline?: boolean
+  targets?: readonly {
+    profile: string
+    port: number
+    authorityId: string | null
+    ownerPid: number | null
+    selected: boolean
+    online: boolean
+    errorCode: ProxyRouteReasonCode | null
+  }[]
 }

@@ -36,11 +36,19 @@ export class MonitoringFacade {
     const elapsedMs = calculateElapsedMs(snapshot.startedAt, snapshot.finishedAt ?? updatedAt)
     const summary: RunSummary = {
       runId: snapshot.runId,
+      serviceId: snapshot.serviceId,
+      webUrl: snapshot.webUrl,
       status: snapshot.status,
       permissionMode: snapshot.permissionPreset,
       startedAt: snapshot.startedAt,
       updatedAt,
       nextAction: resolveNextAction(snapshot.status, projection.attention),
+      lastEventSeq: snapshot.lastEventSeq,
+    }
+
+    const reachedThreshold = projection.startEventSeq !== undefined && snapshot.lastEventSeq - projection.startEventSeq >= 250
+    if (projection.phaseComplete || reachedThreshold) {
+      summary.handoff = { reason: projection.phaseComplete ? 'phase-complete' : 'event-threshold', nextRunAllowed: snapshot.status === 'succeeded' }
     }
 
     if (elapsedMs !== undefined) summary.elapsedMs = elapsedMs

@@ -187,8 +187,8 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
 
   server.registerTool('get_run_summary', {
     title: 'Get a structured Harness run summary',
-    description: 'Project the current durable run snapshot into stable status, model, permission, elapsed time, and next-action fields.',
-    inputSchema: { runId: id },
+    description: 'Read the durable run status, service, session link, model, elapsed time, event cursor, and handoff readiness.',
+    inputSchema: { runId: id, startEventSeq: z.number().int().nonnegative().optional(), phaseComplete: z.boolean().optional() },
     outputSchema: runSummaryOutputSchema,
     annotations: readOnly,
   }, guarded(async input => {
@@ -198,7 +198,9 @@ export function createServer(relay: RelayFacade, config: RelayConfig, monitoring
       ...((snapshot.pendingInteractions?.length ?? 0) > 0 ? { requestedInput: 'Call list_run_interactions, then respond_to_run_interaction with a decision authorized by the user; do not use reply_run.' } : {}),
       ...(snapshot.error === null ? {} : { detail: snapshot.error }),
     }
-    return monitoring.project(snapshot, attention === undefined ? {} : { attention })
+    return monitoring.project(snapshot, { ...(attention ? { attention } : {}),
+      ...(input.startEventSeq === undefined ? {} : { startEventSeq: input.startEventSeq }),
+      ...(input.phaseComplete === undefined ? {} : { phaseComplete: input.phaseComplete }) })
   }, false))
 
   server.registerTool('read_notifications', {
@@ -424,6 +426,8 @@ const setupDoctorOutputSchema = {
 
 const runSummaryOutputSchema = {
   runId: z.string(),
+  serviceId: z.string(),
+  webUrl: z.string(),
   status: z.enum(['running', 'needs_attention', 'succeeded', 'incomplete', 'failed', 'cancelled', 'unknown']),
   attention: z.record(z.string(), z.unknown()).optional(),
   provider: z.string().optional(),
@@ -434,6 +438,8 @@ const runSummaryOutputSchema = {
   updatedAt: z.string(),
   finishedAt: z.string().optional(),
   elapsedMs: z.number().nonnegative().optional(),
+  lastEventSeq: z.number().int().nonnegative(),
+  handoff: z.object({ reason: z.enum(['event-threshold', 'phase-complete']), nextRunAllowed: z.boolean() }).optional(),
   progress: z.record(z.string(), z.unknown()).optional(),
   usage: z.record(z.string(), z.unknown()).optional(),
   nextAction: z.enum(['wait', 'reply', 'respond-interaction', 'cancel', 'open-session', 'none']),

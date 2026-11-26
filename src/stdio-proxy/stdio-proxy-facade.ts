@@ -14,7 +14,7 @@ const doctorTool = {
   name: 'doctor',
   title: 'Diagnose Harness Relay MCP',
   description: 'Inspect the local Relay status, endpoint, token readability, and remote route without exposing credentials.',
-  inputSchema: { type: 'object' as const, additionalProperties: false },
+  inputSchema: { type: 'object' as const, properties: { allTargets: { type: 'boolean' as const } }, additionalProperties: false },
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -102,12 +102,7 @@ export class StdioProxyFacade {
   }
 
   private async callTool(name: string, args: Record<string, unknown> | undefined): Promise<object> {
-    if (name === doctorTool.name) {
-      if (this.remote === null) await this.ensureRemote().catch(() => false)
-      else await this.refreshPreferredSelection()
-      const report = await this.activeDiagnostics.doctor(relayVersion, this.remote !== null, this.lastError)
-      return doctorResult(report)
-    }
+    if (name === doctorTool.name) return doctorResult(await this.doctor(args?.allTargets === true))
     if (!await this.ensureRemote()) return this.unavailableResult(name, this.requireFailure())
     const remote = this.remote
     if (remote === null) return this.unavailableResult(name, this.requireFailure())
@@ -123,6 +118,40 @@ export class StdioProxyFacade {
       await this.invalidateRemote(routeFailure)
       return this.unavailableResult(name, routeFailure)
     }
+  }
+
+  async doctor(allTargets = false): Promise<ProxyDoctorReport> {
+    if (!allTargets) {
+      if (this.remote === null) await this.ensureRemote().catch(() => false)
+      return this.activeDiagnostics.doctor(relayVersion, this.remote !== null, this.lastError)
+    }
+    const report = await this.activeDiagnostics.doctor(relayVersion, this.remote !== null, this.lastError)
+    const targets = await Promise.all((this.config.diagnosticTargets ?? []).map(async target => {
+      const diagnostics = new ProxyDiagnosticsFacade(target.descriptorFile, target.statusFile)
+      const { descriptor, status, token, failure } = await diagnostics.inspect()
+      const selected = descriptor !== null && this.remoteAuthorityKey === descriptorKey(descriptor)
+      const result = { profile: target.profile, port: target.port, authorityId: descriptor?.authorityId ?? null,
+        ownerPid: status?.ownerPid ?? null, selected, online: false, errorCode: failure?.reasonCode ?? null }
+      if (!descriptor || !token || failure) return result
+      const endpoint = new URL(descriptor.mcpUrl)
+      if (Number(endpoint.port) !== target.port || status?.profile !== target.profile) {
+        return { ...result, errorCode: 'STALE_ENDPOINT_DESCRIPTOR' as const }
+      }
+      const probe = new Client({ name: 'dsh-relay-doctor', version: relayVersion })
+      const transport = new StreamableHTTPClientTransport(endpoint, { requestInit: {
+        signal: AbortSignal.timeout(Math.min(this.config.requestTimeoutMs, 5_000)),
+        headers: { authorization: `Bearer ${token}`, 'x-dsh-relay-principal': this.config.clientPrincipalId },
+      } })
+      try {
+        await probe.connect(transport as unknown as Transport)
+        const page = await probe.listTools(undefined, { timeout: Math.min(this.config.requestTimeoutMs, 5_000) })
+        return page.tools.length ? { ...result, online: true } : { ...result, errorCode: 'POST_ROUTE_MISSING' as const }
+      } catch (error) {
+        return { ...result, errorCode: diagnostics.remoteFailure(error).reasonCode }
+      } finally { await probe.close().catch(() => undefined) }
+    }))
+    const allTargetsOnline = targets.length > 0 && targets.every(target => target.online)
+    return { ...report, ok: allTargetsOnline, allTargetsOnline, targets }
   }
 
   private ensureRemote(): Promise<boolean> {

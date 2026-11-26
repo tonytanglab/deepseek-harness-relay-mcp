@@ -33,10 +33,14 @@ export interface MonitoringProjection {
   progress?: RunProgress
   usage?: RunUsage
   updatedAt?: string
+  startEventSeq?: number
+  phaseComplete?: boolean
 }
 
 export interface RunSummary {
   runId: string
+  serviceId: string
+  webUrl: string
   status: RunSnapshot['status']
   attention?: RunAttention
   provider?: string
@@ -50,6 +54,8 @@ export interface RunSummary {
   progress?: RunProgress
   usage?: RunUsage
   nextAction: NextAction
+  lastEventSeq: number
+  handoff?: { reason: 'event-threshold' | 'phase-complete'; nextRunAllowed: boolean }
 }
 
 export type RunNotificationKind = 'run-summary' | 'attention' | 'progress' | 'log'

@@ -9,7 +9,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { McpHttpFacade } from '../src/mcp-http/index.js'
-import { ProxyDiagnosticsFacade, readEndpointDescriptor, StdioProxyFacade } from '../src/stdio-proxy/index.js'
+import { ProxyDiagnosticsFacade, readEndpointDescriptor, StdioProxyFacade, type ProxyDoctorReport } from '../src/stdio-proxy/index.js'
 
 test('stdio proxy discovers the authority and transparently forwards tools', async t => {
   const root = await temporaryDirectory(t)
@@ -431,6 +431,10 @@ test('stdio proxy prefers ready desktop endpoint over web and falls back to web 
   const proxy = new StdioProxyFacade({
     descriptorFile: webDescriptor,
     preferredDescriptorFiles: [{ descriptorFile: desktopDescriptor }],
+    diagnosticTargets: [
+      { profile: 'desktop', port: Number(desktopBackend.host.split(':')[1]), descriptorFile: desktopDescriptor },
+      { profile: 'web', port: Number(webBackend.host.split(':')[1]), descriptorFile: webDescriptor },
+    ],
     clientPrincipalId: 'antigravity:test',
     requestTimeoutMs: 5_000,
   })
@@ -444,6 +448,9 @@ test('stdio proxy prefers ready desktop endpoint over web and falls back to web 
   assert.deepEqual((await client.callTool({ name: 'whoami', arguments: {} })).structuredContent, { backend: 'web' })
   const doctorWeb = await client.callTool({ name: 'doctor', arguments: {} })
   assert.equal((doctorWeb.structuredContent as { descriptorFile?: unknown }).descriptorFile, webDescriptor)
+  const preflight = (await client.callTool({ name: 'doctor', arguments: { allTargets: true } })).structuredContent as ProxyDoctorReport | undefined
+  assert.equal(preflight?.allTargetsOnline, false)
+  assert.deepEqual(preflight?.targets?.map(({ online, selected }) => [online, selected]), [[false, false], [true, true]])
 
   await writeFile(desktopDescriptor, JSON.stringify({
     schemaVersion: 1,
@@ -455,11 +462,14 @@ test('stdio proxy prefers ready desktop endpoint over web and falls back to web 
     ownerEpoch: 1,
     updatedAt: '2026-08-20T00:00:00.000Z',
   }), { encoding: 'utf8' })
-  await writeReadyStatus(desktopDir, 'authority-desktop', 1)
+  await writeStatus(desktopDir, { authorityId: 'authority-desktop', instanceId: 'authority-desktop', profile: 'desktop' })
 
   assert.deepEqual((await client.callTool({ name: 'whoami', arguments: {} })).structuredContent, { backend: 'desktop' })
   const doctorDesktop = await client.callTool({ name: 'doctor', arguments: {} })
   assert.equal((doctorDesktop.structuredContent as { descriptorFile?: unknown }).descriptorFile, desktopDescriptor)
+  const both = (await client.callTool({ name: 'doctor', arguments: { allTargets: true } })).structuredContent as ProxyDoctorReport | undefined
+  assert.equal(both?.allTargetsOnline, true)
+  assert.deepEqual(both?.targets?.map(({ online, selected }) => [online, selected]), [[true, true], [true, false]])
 })
 
 function listen(server: HttpServer): Promise<void> {
